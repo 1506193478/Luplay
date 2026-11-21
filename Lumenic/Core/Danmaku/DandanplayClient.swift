@@ -40,6 +40,7 @@ struct DandanAnime: Identifiable {
 struct DandanEpisode: Identifiable, Hashable {
     let episodeId: Int
     let title: String
+    var id: Int { episodeId }
 }
 
 // MARK: - 弹弹play API 客户端（签名算法：base64(sha256(AppId + Timestamp + Path + AppSecret))）
@@ -161,8 +162,8 @@ final class DandanplayClient {
         if let body { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
 
         let timestamp = String(Int(Date().timeIntervalSince1970))
-        let data = (DandanplayConfig.appId + timestamp + path + DandanplayConfig.appSecret).utf8
-        let digest = SHA256.hash(data: Data(data))
+        let sigInput = (DandanplayConfig.appId + timestamp + path + DandanplayConfig.appSecret).utf8
+        let digest = SHA256.hash(data: Data(sigInput))
         let signature = Data(digest).base64EncodedString()
         request.setValue(DandanplayConfig.appId, forHTTPHeaderField: "X-AppId")
         request.setValue(timestamp + ";" + signature, forHTTPHeaderField: "X-Signature")

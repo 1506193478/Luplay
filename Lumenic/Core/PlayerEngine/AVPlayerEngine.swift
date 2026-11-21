@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import AVKit
 import MediaPlayer
 import UIKit
 
@@ -104,8 +105,8 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
         var result: [TrackInfo] = []
         let asset = item.asset
         let groups: [(AVMediaSelectionGroup?, TrackInfo.Kind)] = [
-            (asset.mediaSelectionGroup(for: .audible), .audio),
-            (asset.mediaSelectionGroup(for: .legible), .subtitle),
+            (asset.mediaSelectionGroup(forMediaCharacteristic: .audible), .audio),
+            (asset.mediaSelectionGroup(forMediaCharacteristic: .legible), .subtitle),
         ]
         for (group, kind) in groups {
             guard let group else { continue }
@@ -124,15 +125,18 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     func selectSubtitle(_ id: String?) {
         guard let item = player.currentItem else { return }
         guard let id else {
-            item.select(nil, in: item.asset.mediaSelectionGroup(for: .legible))
+            // 关闭字幕 = 在字幕组里选中 nil
+            if let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+                item.select(nil, in: group)
+            }
             return
         }
         selectOption(id: id, type: .legible)
     }
 
-    private func selectOption(id: String, type: AVMediaType) {
+    private func selectOption(id: String, type: AVMediaCharacteristic) {
         guard let item = player.currentItem,
-              let group = item.asset.mediaSelectionGroup(for: type) else { return }
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: type) else { return }
         let index = Int(id.dropFirst()) ?? 0
         guard index < group.options.count else { return }
         item.select(group.options[index], in: group)
@@ -190,7 +194,7 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
     private func updateNowPlaying() {
         var info: [String: Any] = [:]
         if let item = player.currentItem {
-            info[MPMediaItemPropertyDuration] = item.duration.seconds
+            info[MPMediaItemPropertyPlaybackDuration] = item.duration.seconds
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = player.currentTime().seconds
         }
         info[MPNowPlayingInfoPropertyPlaybackRate] = player.rate
@@ -212,7 +216,8 @@ final class HeaderedResourceLoader: NSObject, AVAssetResourceLoaderDelegate {
 
     func resourceLoader(_ resourceLoader: AVAssetResourceLoader,
                         shouldWaitForLoadingOfRequestedResource loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        guard let url = AVPlayerEngine.restore(loadingRequest.request.url) else { return false }
+        guard let requestURL = loadingRequest.request.url,
+              let url = AVPlayerEngine.restore(requestURL) else { return false }
         var request = URLRequest(url: url)
         for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
         request.setValue("Luplay/1.0", forHTTPHeaderField: "User-Agent")

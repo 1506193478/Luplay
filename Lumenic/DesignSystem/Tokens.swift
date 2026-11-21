@@ -20,6 +20,19 @@ extension Color {
     static let dsAccent = Color(red: 0.039, green: 0.518, blue: 1.0)
 }
 
+// 让 .dsInk 等前缀写法在 ShapeStyle 泛型位置（foregroundStyle/fill/stroke/tint/background）
+// 稳定可解析：Release WMO 下部分上下文会退化为 any ShapeStyle 查找而报错
+extension ShapeStyle where Self == Color {
+    static var dsInk: Color { Color.dsInk }
+    static var dsInk2: Color { Color.dsInk2 }
+    static var dsInk3: Color { Color.dsInk3 }
+    static var dsGlassFill: Color { Color.dsGlassFill }
+    static var dsGlassBorder: Color { Color.dsGlassBorder }
+    static var dsPage: Color { Color.dsPage }
+    static var dsGold: Color { Color.dsGold }
+    static var dsAccent: Color { Color.dsAccent }
+}
+
 extension Font {
     static let dsTitle = Font.system(size: 26, weight: .heavy)
     static let dsSection = Font.system(size: 21, weight: .heavy)

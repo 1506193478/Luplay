@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import UniformTypeIdentifiers
 
 /// 弹幕玻璃面板：显示开关/密度/字号/透明度/显示区域/字幕避让/时间轴校正
@@ -299,7 +299,7 @@ struct DanmakuPanel: View {
             searchResults = try await client.searchEpisodes(keyword: searchKeyword)
             if searchResults.isEmpty { searchError = "没有匹配的作品" }
         } catch {
-            searchError = "搜索失败：\((error as? DandanplayClient.DanjakuError)?.description ?? "网络异常")"
+            searchError = "搜索失败：\((error as? DandanplayClient.DanmakuError)?.description ?? "网络异常")"
         }
     }
 
@@ -308,7 +308,7 @@ struct DanmakuPanel: View {
             let list = try await client.comments(episodeId: episodeId)
             engine.load(list, source: "弹弹play · \(label)")
         } catch {
-            searchError = "挂载失败：\((error as? DandanplayClient.DanjakuError)?.description ?? "网络异常")"
+            searchError = "挂载失败：\((error as? DandanplayClient.DanmakuError)?.description ?? "网络异常")"
         }
     }
 

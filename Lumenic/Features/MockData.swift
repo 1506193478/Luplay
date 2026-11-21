@@ -37,20 +37,20 @@ struct MockSource: Identifiable, Hashable {
 enum MockStore {
     static let hero = [
         MockMedia(title: "蚀骨时差", subtitle: "悬疑 · 2026 · 24集", score: 8.7, episodeCount: 24,
-                  gradient: g(Color(red: 0.55, green: 0.38, blue: 0.12), Color(red: 0.10, green: 0.06, blue: 0.02))),
+                  gradient: MockMedia.g(Color(red: 0.55, green: 0.38, blue: 0.12), Color(red: 0.10, green: 0.06, blue: 0.02))),
         MockMedia(title: "好东西", subtitle: "剧情 · 2025", score: 9.1, episodeCount: nil,
-                  gradient: g(Color(red: 0.16, green: 0.30, blue: 0.42), .black)),
+                  gradient: MockMedia.g(Color(red: 0.16, green: 0.30, blue: 0.42), .black)),
         MockMedia(title: "星际回声", subtitle: "科幻 · 2026 · 12集", score: 8.4, episodeCount: 12,
-                  gradient: g(Color(red: 0.30, green: 0.10, blue: 0.34), .black)),
+                  gradient: MockMedia.g(Color(red: 0.30, green: 0.10, blue: 0.34), .black)),
     ]
 
     static let continueWatching = [
         MockMedia(title: "法医秦明之蚀骨时差", subtitle: "S01·E14 · 还剩 38 分钟", score: nil, episodeCount: 24,
-                  gradient: g(Color(red: 0.42, green: 0.30, blue: 0.10), .black)),
+                  gradient: MockMedia.g(Color(red: 0.42, green: 0.30, blue: 0.10), .black)),
         MockMedia(title: "好东西", subtitle: "看到 37 分钟", score: nil, episodeCount: nil,
-                  gradient: g(Color(red: 0.14, green: 0.24, blue: 0.34), .black)),
+                  gradient: MockMedia.g(Color(red: 0.14, green: 0.24, blue: 0.34), .black)),
         MockMedia(title: "漫长的季节", subtitle: "S01·E03", score: nil, episodeCount: 12,
-                  gradient: g(Color(red: 0.24, green: 0.32, blue: 0.18), .black)),
+                  gradient: MockMedia.g(Color(red: 0.24, green: 0.32, blue: 0.18), .black)),
     ]
 
     static let libraries = [
@@ -62,15 +62,15 @@ enum MockStore {
 
     static let popular = [
         MockMedia(title: "蚀骨时差", subtitle: "悬疑剧 · 4K杜比", score: 8.7, episodeCount: 24,
-                  gradient: g(Color(red: 0.50, green: 0.34, blue: 0.10), .black)),
+                  gradient: MockMedia.g(Color(red: 0.50, green: 0.34, blue: 0.10), .black)),
         MockMedia(title: "好东西", subtitle: "电影 · 4K60", score: 9.1, episodeCount: nil,
-                  gradient: g(Color(red: 0.16, green: 0.28, blue: 0.40), .black)),
+                  gradient: MockMedia.g(Color(red: 0.16, green: 0.28, blue: 0.40), .black)),
         MockMedia(title: "星际回声", subtitle: "科幻 · HDR10", score: 8.4, episodeCount: 12,
-                  gradient: g(Color(red: 0.30, green: 0.12, blue: 0.36), .black)),
+                  gradient: MockMedia.g(Color(red: 0.30, green: 0.12, blue: 0.36), .black)),
         MockMedia(title: "山海小馆", subtitle: "美食纪录片", score: 8.9, episodeCount: 8,
-                  gradient: g(Color(red: 0.14, green: 0.34, blue: 0.22), .black)),
+                  gradient: MockMedia.g(Color(red: 0.14, green: 0.34, blue: 0.22), .black)),
         MockMedia(title: "无声证词", subtitle: "犯罪 · 1080P", score: 7.9, episodeCount: 18,
-                  gradient: g(Color(red: 0.36, green: 0.12, blue: 0.12), .black)),
+                  gradient: MockMedia.g(Color(red: 0.36, green: 0.12, blue: 0.12), .black)),
     ]
 
     static let playTarget = MockPlayTarget(

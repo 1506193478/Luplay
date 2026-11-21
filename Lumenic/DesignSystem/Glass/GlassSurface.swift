@@ -67,10 +67,10 @@ struct GlassSurface<Content: View>: View {
 
     private var cappedRadius: CGFloat { min(shape.radius, 40) }
 
-    private var shapeProxy: some Shape {
+    private var shapeProxy: AnyShape {
         AnyShape(erasing: shape == .capsule
-            ? AnyShape(Capsule())
-            : AnyShape(RoundedRectangle(cornerRadius: cappedRadius, style: .continuous)))
+            ? AnyShape(erasing: Capsule())
+            : AnyShape(erasing: RoundedRectangle(cornerRadius: cappedRadius, style: .continuous)))
     }
 
     private var padding: CGFloat {
@@ -90,7 +90,7 @@ struct GlassSimulatorBackground: View {
             .fill(tint)
             .background(BlurEffectView(style: .systemUltraThinMaterialDark))
             .clipShape(shape)
-            .overlay(shape.strokeBorder(Color.dsGlassBorder, lineWidth: 1))
+            .overlay(shape.stroke(Color.dsGlassBorder, lineWidth: 1))
     }
 }
 

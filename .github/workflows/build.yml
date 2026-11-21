@@ -30,7 +30,7 @@ jobs:
           set -o pipefail
           xcodebuild build \
             -scheme Luplay \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcpretty || exit 1

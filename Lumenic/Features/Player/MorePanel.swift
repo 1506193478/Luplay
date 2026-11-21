@@ -26,7 +26,7 @@ struct MorePanel: View {
             }
         }
         .onAppear { loadMarker() }
-        .onChange(of: brightness) { _, value in
+        .onChange(of: brightness) { value in
             UIScreen.main.brightness = value
         }
     }

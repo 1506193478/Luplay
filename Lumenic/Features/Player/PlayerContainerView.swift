@@ -137,7 +137,7 @@ struct PlayerContainerView: View {
             OrientationGate.shared.allowLandscape = true
             SystemVolumeController.shared.attachIfNeeded()   // 提前挂载，音量滑杆就绪
         }
-        .onChange(of: mini) { _, m in
+        .onChange(of: mini) { m in
             OrientationGate.shared.allowLandscape = !m
             if !m { controlsVisible = true }
         }
@@ -157,23 +157,23 @@ struct PlayerContainerView: View {
                                           episodeLabel: activeRequest.episodeLabel,
                                           client: env.dandanplay)
         }
-        .onChange(of: session.tick?.position) { _, pos in
+        .onChange(of: session.tick?.position) { pos in
             guard let pos else { return }
             danmakuEngine.sync(position: pos)
             autoSkipIfNeeded(at: pos)
         }
-        .onChange(of: session.tick?.duration) { _, dur in
+        .onChange(of: session.tick?.duration) { dur in
             guard let dur else { return }
             danmakuEngine.setDuration(dur)
         }
-        .onChange(of: session.isPlaying) { _, playing in
+        .onChange(of: session.isPlaying) { playing in
             danmakuEngine.setPlaying(playing, rate: session.rate)
         }
-        .onChange(of: session.rate) { _, rate in
+        .onChange(of: session.rate) { rate in
             danmakuEngine.setPlaying(session.isPlaying, rate: rate)
         }
         // 三层防遮挡之二：控件浮现 → 弹幕池下沉 + 让透明度
-        .onChange(of: controlsVisible) { _, visible in
+        .onChange(of: controlsVisible) { visible in
             danmakuEngine.setSuppressed(visible ? 1 : 0)
         }
         .onDisappear {
@@ -415,7 +415,7 @@ struct PlayerContainerView: View {
             UIScreen.main.brightness = nb
             hud = .brightness(nb)
         } else {
-            let nv = min(1, max(0, panStartVolume + delta))
+            let nv = min(1, max(0, panStartVolume + Float(delta)))
             SystemVolumeController.shared.set(nv)
             hud = .volume(nv)
         }
@@ -662,7 +662,8 @@ struct PlayerContainerView: View {
             switch panel {
             case .sources:
                 SourceComparePanel(options: activeRequest.options,
-                                   selectedID: $selectedOptionID,
+                                   selectedID: Binding(get: { selectedOptionID },
+                                                       set: { selectedOptionID = $0 ?? "" }),
                                    onSelect: { option in
                                        Task { await switchTo(option) }
                                    },

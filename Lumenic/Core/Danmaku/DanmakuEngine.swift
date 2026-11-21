@@ -1,4 +1,4 @@
-import Foundation
+﻿import Foundation
 import SwiftUI
 import MetalKit
 import CoreText
@@ -170,7 +170,7 @@ final class DanmakuEngine: ObservableObject {
             }
         } catch {
             load(MockDanmaku.generate(duration: durationForMock), source: "演示弹幕")
-            status = .failed("匹配失败：\((error as? DandanplayClient.DanjakuError)?.description ?? "网络异常")，已载入演示弹幕")
+            status = .failed("匹配失败：\((error as? DandanplayClient.DanmakuError)?.description ?? "网络异常")，已载入演示弹幕")
         }
     }
 
@@ -220,7 +220,8 @@ final class DanmakuEngine: ObservableObject {
 
     // MARK: 泳道布局 + 密度自适应（渲染线程调用）
 
-    private struct Frame {
+    /// 每帧快照（Metal 渲染器消费，须 nonisolated 可见）
+    struct Frame {
         var items: [Live]
         var pos: Double
         var viewport: CGSize
@@ -363,14 +364,14 @@ final class DanmakuEngine: ObservableObject {
         ctx.setAllowsAntialiasing(true)
         ctx.setShouldAntialias(true)
         // 描边：四向偏移画黑色底
-        ctx.setTextPosition(stroke, stroke)
+        ctx.textPosition = CGPoint(x: stroke, y: stroke)
         for (dx, dy) in [(stroke, 0), (-stroke, 0), (0, stroke), (0, -stroke)] as [(CGFloat, CGFloat)] {
-            ctx.setTextPosition(stroke + dx, stroke + dy)
+            ctx.textPosition = CGPoint(x: stroke + dx, y: stroke + dy)
             ctx.setShadow(offset: .zero, blur: 2, color: UIColor.black.cgColor)
             CTLineDraw(line, ctx)
         }
         ctx.setShadow(offset: .zero, blur: 0, color: nil)
-        ctx.setTextPosition(stroke, stroke)
+        ctx.textPosition = CGPoint(x: stroke, y: stroke)
         CTLineDraw(line, ctx)
 
         return (ctx.makeImage()!, size)
@@ -443,7 +444,7 @@ final class DanmakuRenderer: NSObject, MTKViewDelegate {
             let vd = MTLVertexDescriptor()
             vd.attributes[0].format = .float2; vd.attributes[0].offset = 0; vd.attributes[0].bufferIndex = 0
             vd.attributes[1].format = .float2; vd.attributes[1].offset = 8; vd.attributes[1].bufferIndex = 0
-            vd.attributes[2].format = .float1; vd.attributes[2].offset = 16; vd.attributes[2].bufferIndex = 0
+            vd.attributes[2].format = .float; vd.attributes[2].offset = 16; vd.attributes[2].bufferIndex = 0
             vd.layouts[0].stride = Self.stride * 4
             desc.vertexDescriptor = vd
             pipeline = try device.makeRenderPipelineState(descriptor: desc)

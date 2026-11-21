@@ -126,15 +126,15 @@ final class DLNAClient {
 
     /// 设置音量（0-100，RenderingControl）
     func setVolume(_ percent: Int, renderingControlURL: URL) async throws {
-        try await soap("SetVolume", service: "RenderingControl", controlURL: renderingControlURL, body: """
+        try await soap("SetVolume", controlURL: renderingControlURL, service: "RenderingControl", body: """
         <InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>\(percent)</DesiredVolume>
         """)
     }
 
     /// 查询音量（0-100），失败返回 nil
     func volume(renderingControlURL: URL) async -> Int? {
-        guard let data = try? await soapResponse("GetVolume", service: "RenderingControl",
-                                                 controlURL: renderingControlURL,
+        guard let data = try? await soapResponse("GetVolume", controlURL: renderingControlURL,
+                                                 service: "RenderingControl",
                                                  body: "<InstanceID>0</InstanceID><Channel>Master</Channel>"),
               let xml = String(data: data, encoding: .utf8),
               let raw = Self.tagValue("CurrentVolume", in: xml)
@@ -232,11 +232,10 @@ private extension DLNAClient {
     }
 
     static func waitForData(_ fd: Int32, seconds: Double) -> Bool {
-        var set = fd_set()
-        FD_ZERO(&set)
-        FD_SET(fd, &set)
-        let tv = timeval(tv_sec: Int(seconds), tv_usec: Int32((seconds.truncatingRemainder(dividingBy: 1)) * 1_000_000))
-        return select(fd + 1, &set, nil, nil, &tv) > 0
+        // Swift 不暴露 FD_ZERO/FD_SET 宏，改用 poll（等价的可读性检测）
+        var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        let timeout = Int32(max(0, seconds * 1000))
+        return poll(&pfd, 1, timeout) > 0
     }
 
     static func parseResponse(_ text: String) -> DiscoveredDevice? {
@@ -265,11 +264,11 @@ private extension DLNAClient {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// 找 AVTransport 服务的 controlURL（serviceType 匹配后取同级 controlURL）
-    static func avTransportControlURL(in xml: String) -> String? {
+    /// 找指定服务的 controlURL（serviceType 匹配后取同级 controlURL）
+    static func controlURL(for serviceType: String, in xml: String) -> String? {
         let services = xml.components(separatedBy: "<service>").dropFirst()
         for service in services {
-            guard service.contains("AVTransport") else { continue }
+            guard service.contains(serviceType) else { continue }
             if let url = tagValue("controlURL", in: service), !url.isEmpty { return url }
         }
         return nil

@@ -40,12 +40,12 @@ final class AppDatabase {
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("luplay.sqlite")
         try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        dbWriter = try DatabaseQueue(path: path.absoluteString)
+        dbWriter = try DatabaseQueue(path: path.path)
         try migrator.migrate(dbWriter)
     }
 
     /// 预览/测试用内存库
-    static var inMemory: AppDatabase { AppDatabase(makeWriter: { try! DatabaseQueue.inMemory() }) }
+    static var inMemory: AppDatabase { AppDatabase(makeWriter: { try! DatabaseQueue() }) }
 
     private init(makeWriter: () throws -> any DatabaseWriter) {
         dbWriter = try! makeWriter()

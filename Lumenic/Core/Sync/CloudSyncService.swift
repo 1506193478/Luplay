@@ -207,7 +207,7 @@ final class CloudSyncService: ObservableObject {
             let op = CKQueryOperation(query: CKQuery(recordType: type, predicate: NSPredicate(value: true)))
             op.resultsLimit = 500
             var acc: [CKRecord] = []
-            op.recordMatched = { _, result in
+            op.recordMatchedBlock = { _, result in
                 if let rec = try? result.get() { acc.append(rec) }
             }
             op.queryResultBlock = { result in

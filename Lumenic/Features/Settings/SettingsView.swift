@@ -30,7 +30,7 @@ struct SettingsView: View {
             }
         }
         .background(Color.dsPage.ignoresSafeArea())
-        .onChange(of: engineOverride) { _, v in
+        .onChange(of: engineOverride) { v in
             UserDefaults.standard.set(v, forKey: "engine.override")
         }
         .sheet(item: $editTarget) { config in

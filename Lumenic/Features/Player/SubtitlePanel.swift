@@ -54,7 +54,7 @@ struct SubtitlePanel: View {
                         }
                     }
                     .tint(.dsAccent)
-                    .onChange(of: overrideASS) { _, on in
+                    .onChange(of: overrideASS) { on in
                         session.applySubtitleOption(name: "sub-ass-override", value: on ? "force" : "no")
                         persist()
                     }

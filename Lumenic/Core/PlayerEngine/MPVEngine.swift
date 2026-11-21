@@ -105,8 +105,16 @@ final class MPVEngine: NSObject, PlayerEngine {
 
     // MARK: - 控制
 
-    func play() { setFlag("paused", false) }
-    func pause() { setFlag("paused", true) }
+    func play() {
+        #if canImport(MPVKit)
+        setFlag("paused", false)
+        #endif
+    }
+    func pause() {
+        #if canImport(MPVKit)
+        setFlag("paused", true)
+        #endif
+    }
     var isPlaying: Bool {
         #if canImport(MPVKit)
         guard let handle else { return false }
@@ -160,10 +168,16 @@ final class MPVEngine: NSObject, PlayerEngine {
         #endif
     }
 
-    func selectAudio(_ id: String) { setString("aid", String(id.dropFirst())) }
+    func selectAudio(_ id: String) {
+        #if canImport(MPVKit)
+        setString("aid", String(id.dropFirst()))
+        #endif
+    }
     func selectSubtitle(_ id: String?) {
+        #if canImport(MPVKit)
         guard let id else { setString("sid", "no"); return }
         setString("sid", String(id.dropFirst()))
+        #endif
     }
 
     func loadExternalSubtitle(_ url: URL) {
@@ -288,11 +302,13 @@ final class MPVRenderView: GLKView {
         self.glContext = EAGLContext(api: .openGLES3)!
         super.init(frame: .zero, context: glContext)
         enableSetNeedsDisplay = false
-        drawableColorFormat = .rgba8888
+        drawableColorFormat = .RGBA8888
         backgroundColor = .black
 
         EAGLContext.setCurrent(glContext)
+        #if canImport(MPVKit)
         _ = engine.attachRenderContext(to: self)
+        #endif
 
         let link = CADisplayLink(target: self, selector: #selector(tick))
         link.preferredFramesPerSecond = 60
@@ -308,7 +324,9 @@ final class MPVRenderView: GLKView {
 
     override func draw(_ rect: CGRect) {
         guard let engine else { return }
-        let scale = Int32(truncatingIfNeeded: contentScaleFactor)
+        let scale = Int32(contentScaleFactor)
+        #if canImport(MPVKit)
         engine.renderFrame(width: Int32(bounds.width) * scale, height: Int32(bounds.height) * scale)
+        #endif
     }
 }

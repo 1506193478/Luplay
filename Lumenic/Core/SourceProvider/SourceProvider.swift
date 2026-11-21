@@ -70,7 +70,7 @@ final class SearchAggregator: ObservableObject {
 
         await withTaskGroup(of: [SourceItem].self) { group in
             for p in providers where p.isConfigured {
-                group.addTask { try? await p.search(query) ?? [] }
+                group.addTask { (try? await p.search(query)) ?? [] }
             }
             var all: [SourceItem] = []
             for await r in group { all += r }

@@ -394,13 +394,8 @@ final class CastV2Client {
         return out
     }
 
-    struct CastMessage {
-        let namespace: String
-        let payload: String
-    }
-
     /// 最小 protobuf 解码：只提取 namespace(field 4) 与 payload_utf8(field 6)
-    private static func decode(_ data: Data) -> CastMessage? {
+    private static func decode(_ data: Data) -> (namespace: String, payload: String)? {
         let bytes = [UInt8](data)
         var i = 0
         var namespace: String?
@@ -436,7 +431,7 @@ final class CastV2Client {
             }
         }
         guard let namespace, let payload else { return nil }
-        return CastMessage(namespace: namespace, payload: payload)
+        return (namespace: namespace, payload: payload)
     }
 
     private static func transportID(in payload: String) -> String? {
@@ -500,10 +495,9 @@ final class CastV2Client {
     }
 
     private static func waitForData(_ fd: Int32, seconds: Double) -> Bool {
-        var set = fd_set()
-        FD_ZERO(&set)
-        FD_SET(fd, &set)
-        let tv = timeval(tv_sec: Int(seconds), tv_usec: Int32((seconds.truncatingRemainder(dividingBy: 1)) * 1_000_000))
-        return select(fd + 1, &set, nil, nil, &tv) > 0
+        // Swift 不暴露 FD_ZERO/FD_SET 宏，改用 poll（等价的可读性检测）
+        var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        let timeout = Int32(max(0, seconds * 1000))
+        return poll(&pfd, 1, timeout) > 0
     }
 }
