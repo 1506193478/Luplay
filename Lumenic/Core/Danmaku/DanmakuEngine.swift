@@ -484,7 +484,8 @@ final class DanmakuRenderer: NSObject, MTKViewDelegate {
             switch item.comment.mode {
             case .scroll:
                 let progress = elapsed / 7.0
-                x = Float(frame.viewport.width) - progress * (Float(frame.viewport.width) + texW)
+                let vw = Float(frame.viewport.width)
+                x = vw - progress * (vw + texW)
                 y = Float(item.lane) * Float(frame.laneHeight) + 6 + suppressShift
                 alpha = Float(frame.opacity)
             case .top:
@@ -493,8 +494,10 @@ final class DanmakuRenderer: NSObject, MTKViewDelegate {
                 alpha = Float(frame.opacity) * min(1, max(0, Float(5.0 - elapsed) / 0.5))
             case .bottom:
                 x = (Float(frame.viewport.width) - texW) / 2
-                y = Float(frame.viewport.height) - Float(frame.subtitleBand)
-                    - Float(item.lane + 1) * Float(frame.laneHeight) - 4 + suppressShift
+                let vh = Float(frame.viewport.height)
+                let bandH = Float(frame.subtitleBand)
+                let laneBottom = Float(item.lane + 1) * Float(frame.laneHeight)
+                y = vh - bandH - laneBottom - 4 + suppressShift
                 alpha = Float(frame.opacity) * min(1, max(0, Float(5.0 - elapsed) / 0.5))
             }
             alpha *= Float(1 - frame.suppressed * 0.55)        // 控件浮现：透明度让位
@@ -562,7 +565,7 @@ struct DanmakuOverlay: UIViewRepresentable {
         engine.setViewport(view.bounds.size, scale: view.contentScaleFactor)
     }
 
-    func makeCoordinator(context: Context) -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
         var renderer: DanmakuRenderer?

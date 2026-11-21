@@ -124,7 +124,7 @@ struct DanmakuPanel: View {
     }
 
     @ViewBuilder
-    private func stepperRow(_ title: String, value: String, unit: String,
+    private func stepperRow(_ title: String, value: Int, unit: String,
                             minus: @escaping () -> Void, plus: @escaping () -> Void) -> some View {
         HStack {
             Text(title).font(.system(size: 15)).foregroundStyle(.dsInk)

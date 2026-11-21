@@ -57,7 +57,7 @@ struct HomeView: View {
                         .foregroundStyle(.dsInk2)
                 }
             }
-            .frame(maxWidth: 230, height: 40)
+            .frame(maxWidth: 230, minHeight: 40)
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)

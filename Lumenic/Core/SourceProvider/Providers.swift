@@ -451,7 +451,7 @@ final class WebDAVProvider: SourceProvider {
         let entries = try await propfind(item.id)
         let files = entries
             .filter { !$0.isDir }
-            .map { (e in (e.path as NSString).lastPathComponent) }
+            .map { e in (e.path as NSString).lastPathComponent }
             .filter { MediaProbe.isVideoFile($0) }
             .map { ($0, EpisodeParser.guessNumber(from: $0) ?? 0) }
             .sorted { $0.1 < $1.1 }
