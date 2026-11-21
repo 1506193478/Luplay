@@ -116,7 +116,7 @@ struct DanmakuPanel: View {
                        minus: { engine.density = max(0.2, engine.density - 0.2) },
                        plus: { engine.density = min(3, engine.density + 0.2) })
             Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
-            stepperRow("时间轴校正", value: Int(engine.offset * 10), unit: "s",
+            stepperRow("时间轴校正", value: String(format: "%+.1f", engine.offset), unit: "s",
                        minus: { engine.offset -= 0.5 },
                        plus: { engine.offset += 0.5 })
         }

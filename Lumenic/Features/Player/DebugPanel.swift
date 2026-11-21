@@ -51,7 +51,7 @@ struct DebugPanel: View {
         }
         if let info = option {
             result.append(("片源", "\(info.serverName) · \(info.providerId)"))
-            result.append(("媒体", "\(info.container.uppercased()) · \(info.resolution) · \(info.hdr)"))
+            result.append(("媒体", "\(info.info.container.uppercased()) · \(info.info.resolution) · \(info.info.hdr)"))
             if info.info.bitrateMbps > 0 {
                 result.append(("标称码率", String(format: "%.1f Mbps", info.info.bitrateMbps)))
             }
