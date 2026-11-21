@@ -56,20 +56,25 @@ protocol PlayerEngine: AnyObject {
 
     /// 字幕样式/时序属性（mpv 生效；AVPlayer 无对应能力默认 no-op）
     func setSubtitleOption(name: String, value: String)
+
+    /// 渲染层视图（AVPlayerLayer / mpv Metal）
+    func makeRenderView() -> Any
 }
 
 extension PlayerEngine {
     func setSubtitleOption(name: String, value: String) {}
 }
-    /// 渲染层视图（AVPlayerLayer / mpv Metal）
-    func makeRenderView() -> Any
-}
 
 // MARK: - 内核选择策略（方案 §3.4）
 
 enum EngineSelector {
-    /// 按片源信息推荐内核；用户设置可覆盖
+    /// 按片源信息推荐内核；设置页"默认内核"覆盖（auto / avplayer / mpv）
     static func recommend(container: String, codec: String?, hdr: String?) -> EngineKind {
+        switch UserDefaults.standard.string(forKey: "engine.override") ?? "auto" {
+        case "avplayer": return .avplayer
+        case "mpv": return .mpv
+        default: break
+        }
         let c = container.lowercased()
         if c == "m3u8" || c == "hls" { return .avplayer }
         if c == "mp4" || c == "webm" { return .avplayer }

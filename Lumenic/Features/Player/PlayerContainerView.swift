@@ -20,9 +20,10 @@ struct PlayerContainerView: View {
 
     init(request: PlayRequest) {
         self.request = request
-        // 内核自动选择（方案 §3.4）：取质量分最高片源的推荐内核；mpv 不可用时回退
+        // 内核自动选择（方案 §3.4）：按最佳片源信息实时推荐（设置页"默认内核"可覆盖）；mpv 不可用时回退
         let best = request.bestOption
-        var kind = best?.info.recommendedEngine ?? .avplayer
+        var kind = best.map { EngineSelector.recommend(container: $0.info.container,
+                                                       codec: $0.info.codec, hdr: $0.info.hdr) } ?? .avplayer
         if kind == .mpv && !MPVEngine.isAvailable { kind = .avplayer }
         let mediaKey = "\(request.title)|\(request.episodeLabel)"
         _session = StateObject(wrappedValue: PlaybackSession(
@@ -60,7 +61,9 @@ struct PlayerContainerView: View {
         .task {
             // 重绑真实数据库（init 时 env 不可用只能用内存库）
             session.useDatabase(env.database)
-            guard let opt = currentOption else { return }
+            guard var opt = currentOption else { return }
+            // 直链时效（Alist raw_url 有时效）：起播前重取最新直链
+            if let refresh = opt.refresh, let fresh = try? await refresh() { opt.info = fresh }
             await session.start(PlayableItem(url: opt.info.url, headers: opt.info.headers,
                                              engine: session.engineKind, startPosition: 0))
             // 片头片尾标记（M6）
@@ -170,6 +173,7 @@ struct PlayerContainerView: View {
                 panelButton(.cast, icon: "rectangle.on.rectangle")
                 pipButton
                 panelButton(.sources, icon: "square.stack.3d.up")
+                panelButton(.subtitle, icon: "captions.bubble")
                 panelButton(.danmaku, icon: "text.bubble")
                 panelButton(.more, icon: "ellipsis.circle")
             }
@@ -331,10 +335,12 @@ struct PlayerContainerView: View {
         }
     }
 
-    /// 换源（进度保留，M4 来源对比）
+    /// 换源（进度保留，M4 来源对比；直链有时效的片源先刷新再切换）
     private func switchTo(_ option: StreamOption) async {
         guard option.id != selectedOptionID else { return }
-        await session.switchSource(to: PlayableItem(url: option.info.url, headers: option.info.headers,
+        var info = option.info
+        if let refresh = option.refresh, let fresh = try? await refresh() { info = fresh }
+        await session.switchSource(to: PlayableItem(url: info.url, headers: info.headers,
                                                     engine: session.engineKind, startPosition: 0))
     }
 

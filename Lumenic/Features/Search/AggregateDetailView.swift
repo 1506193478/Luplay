@@ -45,6 +45,14 @@ struct AggregateDetailView: View {
             }
         }
         .overlay(alignment: .topLeading) { navBack }
+        // 进媒体库（upsert）：打开过详情即收藏，记录归一化 key / 标题 / 命中片源 / 海报
+        .task {
+            let ids = Array(Set(result.items.map(\.providerId))).sorted()
+            let poster = await env.tmdb.posterURL(title: result.title, year: nil)
+            try? env.database.save(libraryEntry: LibraryEntry(
+                tmdbKey: result.id, title: result.title, providerIds: ids,
+                posterPath: poster?.absoluteString, addedAt: Date()))
+        }
     }
 
     private var backdrop: some View {
@@ -230,8 +238,10 @@ struct AggregateDetailView: View {
                 group.addTask {
                     do {
                         guard let (ep, info) = try await fetch(provider, item) else { return nil }
+                        // refresh 闭包捕获 provider+episode：Alist 直链有时效，续播/换源前重取
                         return StreamOption(id: "\(item.id)|\(ep.id)", providerId: item.providerId,
-                                            serverName: name, info: info)
+                                            serverName: name, info: info,
+                                            refresh: { try await provider.streamURL(of: ep) })
                     } catch {
                         return nil
                     }

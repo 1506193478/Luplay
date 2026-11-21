@@ -117,4 +117,20 @@ final class AppDatabase {
             try PlaybackProgress.order(Column("updatedAt").desc).fetchAll(db)
         }
     }
+
+    // MARK: 媒体库条目
+
+    /// upsert 一条媒体库条目（primaryKey tmdbKey）
+    func save(libraryEntry: LibraryEntry) throws {
+        try dbWriter.write { db in
+            try libraryEntry.save(db)
+        }
+    }
+
+    /// 全部媒体库条目（最近添加在前）
+    func allLibraryEntries() throws -> [LibraryEntry] {
+        try dbWriter.read { db in
+            try LibraryEntry.order(Column("addedAt").desc).fetchAll(db)
+        }
+    }
 }

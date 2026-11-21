@@ -6,6 +6,7 @@ struct SettingsView: View {
     @State private var editTarget: ProviderConfig?
     @State private var showAdd = false
     @State private var showSecrets = false
+    @State private var engineOverride = UserDefaults.standard.string(forKey: "engine.override") ?? "auto"
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -23,15 +24,15 @@ struct SettingsView: View {
 
                 providerSection
 
-                group("播放", items: [
-                    ("play.circle", "默认内核", "自动（按片源选择）"),
-                    ("4k.tv.hfill", "解码", "视频工具箱硬解"),
-                ])
+                playbackSection
                 secretsSection
                 Color.clear.frame(height: 120)
             }
         }
         .background(Color.dsPage.ignoresSafeArea())
+        .onChange(of: engineOverride) { _, v in
+            UserDefaults.standard.set(v, forKey: "engine.override")
+        }
         .sheet(item: $editTarget) { config in
             ProviderEditView(existing: config)
         }
@@ -40,6 +41,60 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showSecrets) {
             SecretsEditView()
+        }
+    }
+
+    // MARK: 播放设置（默认内核真实可切换，EngineSelector 读取覆盖）
+
+    private var playbackSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("播放").font(.system(size: 15, weight: .semibold)).foregroundStyle(.dsInk2)
+                .padding(.horizontal, 6)
+            GlassSurface(shape: .rounded(16)) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "play.circle")
+                            .font(.system(size: 15)).foregroundStyle(.dsInk2).frame(width: 26)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("默认内核").font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
+                            Text(engineOverrideHint)
+                                .font(.dsCaption).foregroundStyle(.dsInk2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Picker("默认内核", selection: $engineOverride) {
+                            Text("自动").tag("auto")
+                            Text("AVPlayer").tag("avplayer")
+                            Text("mpv").tag("mpv")
+                        }
+                        .pickerStyle(.menu)
+                        .tint(Color.accentColor)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                    Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
+                    HStack(spacing: 12) {
+                        Image(systemName: "4k.tv.hfill")
+                            .font(.system(size: 15)).foregroundStyle(.dsInk2).frame(width: 26)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("解码").font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
+                            Text("视频工具箱硬解")
+                                .font(.dsCaption).foregroundStyle(.dsInk2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var engineOverrideHint: String {
+        switch engineOverride {
+        case "avplayer": return "总是 AVPlayer（HLS / 杜比视界优先）"
+        case "mpv": return "总是 mpv（MKV / ASS 特效字幕优先）"
+        default: return "自动（按片源选择）"
         }
     }
 

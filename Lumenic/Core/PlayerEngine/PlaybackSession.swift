@@ -21,6 +21,7 @@ final class PlaybackSession: ObservableObject {
     @Published private(set) var engineKind: EngineKind
     @Published var rate: Double = 1.0
     @Published private(set) var isPlaying = false
+    @Published private(set) var tracks: [TrackInfo] = []   // 音轨/字幕轨（轨道面板用）
 
     private(set) var engine: PlayerEngine
     private var item: PlayableItem?
@@ -52,6 +53,7 @@ final class PlaybackSession: ObservableObject {
         engine.play()
         isPlaying = true
         consumeTicks()
+        refreshTracks()
     }
 
     /// 换内核（保留当前进度）：mpv→AVPlayer 转投桥也走这里
@@ -68,6 +70,7 @@ final class PlaybackSession: ObservableObject {
         engine.play()
         isPlaying = true
         consumeTicks()
+        refreshTracks()
     }
 
     /// 换片源（同内核重载新地址，进度不丢；M4 来源对比面板用）
@@ -81,6 +84,7 @@ final class PlaybackSession: ObservableObject {
         engine.play()
         isPlaying = true
         consumeTicks()
+        refreshTracks()
         item = newItem
     }
 
@@ -97,10 +101,39 @@ final class PlaybackSession: ObservableObject {
         engine.setSubtitleOption(name: name, value: value)
     }
 
+    // MARK: 轨道选择（音轨/字幕轨/外挂字幕）
+
+    /// 重新读取引擎轨道列表（加载完成后 + 面板打开时调用）
+    func refreshTracks() {
+        tracks = engine.availableTracks()
+    }
+
+    func selectAudio(_ id: String) {
+        engine.selectAudio(id)
+        refreshTracks()
+    }
+
+    /// nil = 关闭字幕
+    func selectSubtitle(_ id: String?) {
+        engine.selectSubtitle(id)
+        refreshTracks()
+    }
+
+    /// 外挂字幕（mpv 内核生效；AVPlayer 无此能力）
+    func loadExternalSubtitle(_ url: URL) {
+        engine.loadExternalSubtitle(url)
+        refreshTracks()
+    }
+
     /// 退出播放器时保存进度
     func close() {
         if let tick, tick.position > 3 {
-            let progress = PlaybackProgress(tmdbKey: mediaKey, season: 1, episode: 1,
+            // 集级进度：从 mediaKey 的集标签解析 season/episode（"好东西|第2集" / "…|S01E02"）
+            let label = mediaKey.contains("|")
+                ? mediaKey.split(separator: "|", maxSplits: 1).last.map(String.init) ?? ""
+                : ""
+            let (season, episode) = EpisodeProgressParser.parse(label)
+            let progress = PlaybackProgress(tmdbKey: mediaKey, season: season, episode: episode,
                                             position: tick.position, duration: tick.duration,
                                             updatedAt: Date())
             try? database.save(progress: progress)
@@ -120,5 +153,25 @@ final class PlaybackSession: ObservableObject {
                 self.tick = t
             }
         }
+    }
+}
+
+// MARK: - 集级进度解析（"S01E02"→(1,2)；"第2集"→(1,2)；其他→(1,1)）
+
+enum EpisodeProgressParser {
+    static func parse(_ label: String) -> (season: Int, episode: Int) {
+        let ns = label as NSString
+        if let re = try? NSRegularExpression(pattern: #"(?i)s(\d{1,2})[\s._-]*e(\d{1,4})"#),
+           let m = re.firstMatch(in: label, range: NSRange(location: 0, length: ns.length)),
+           m.numberOfRanges >= 3 {
+            return (Int(ns.substring(with: m.range(at: 1))) ?? 1,
+                    Int(ns.substring(with: m.range(at: 2))) ?? 1)
+        }
+        if let re = try? NSRegularExpression(pattern: #"第\s*(\d{1,4})\s*[集话話]"#),
+           let m = re.firstMatch(in: label, range: NSRange(location: 0, length: ns.length)),
+           m.numberOfRanges >= 2 {
+            return (1, Int(ns.substring(with: m.range(at: 1))) ?? 1)
+        }
+        return (1, 1)
     }
 }

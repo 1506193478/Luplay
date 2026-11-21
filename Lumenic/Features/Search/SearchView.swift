@@ -114,7 +114,7 @@ struct SearchView: View {
     /// 聚合结果卡：归一化标题 + 命中的片源徽章
     private func aggregateCard(_ result: SearchAggregator.AggregatedResult) -> some View {
         HStack(spacing: 12) {
-            CoverPlaceholder(gradient: CoverPalette.forTitle(result.title))
+            ResultPoster(title: result.title)
                 .frame(width: 86, height: 118)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 6) {
@@ -145,5 +145,30 @@ struct SearchView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.accentColor.opacity(0.85)))
+    }
+}
+
+// MARK: - TMDB 海报（未配置/查不到时落渐变占位）
+
+private struct ResultPoster: View {
+    let title: String
+    @EnvironmentObject private var env: AppEnvironment
+    @State private var url: URL?
+
+    var body: some View {
+        ZStack {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    if let img = phase.image {
+                        img.resizable().scaledToFill()
+                    } else {
+                        CoverPlaceholder(gradient: CoverPalette.forTitle(title))
+                    }
+                }
+            } else {
+                CoverPlaceholder(gradient: CoverPalette.forTitle(title))
+            }
+        }
+        .task { url = await env.tmdb.posterURL(title: title, year: nil) }
     }
 }

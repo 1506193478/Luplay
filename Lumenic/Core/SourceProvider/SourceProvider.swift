@@ -100,7 +100,9 @@ struct StreamOption: Identifiable {
     let id: String          // itemId|episodeId 组合
     let providerId: String
     let serverName: String
-    let info: StreamInfo
+    var info: StreamInfo    // var：续播/换源前可通过 refresh 刷新为最新直链
+    /// 直链时效刷新（Alist raw_url 有时效）：重新取流信息；nil 表示链接长期有效
+    var refresh: (() async throws -> StreamInfo)? = nil
 }
 
 struct PlayRequest: Identifiable {
