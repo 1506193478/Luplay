@@ -73,7 +73,7 @@ struct AggregateDetailView: View {
         .overlay(LinearGradient(colors: [.clear, .dsPage],
                                 startPoint: UnitPoint(x: 0.5, y: 0.4), endPoint: .bottom))
         .clipped()
-        .task { backdropURL = await env.tmdb.posterURL(title: result.title, year: nil) }
+        .task { backdropURL = await env.tmdb.backdropURL(title: result.title, year: nil) }
     }
 
     private var navBack: some View {

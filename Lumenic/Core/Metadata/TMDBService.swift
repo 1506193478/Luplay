@@ -7,6 +7,7 @@ final class TMDBService {
     private let imageBaseURL = "https://image.tmdb.org/t/p/w500"
     private var cache: [String: String] = [:]      // 标题|年 → tmdb:id
     private var posterCache: [String: String?] = [:]  // 标题|年 → posterPath
+    private var backdropCache: [String: String?] = [:]  // 标题|年 → backdropPath
     private let lock = NSLock()
 
     var apiKey: String? { KeychainStore.shared.string(for: Self.apiKeyKey) }
@@ -41,6 +42,22 @@ final class TMDBService {
 
         let path: String? = await search(title: title, year: year)?["poster_path"] as? String
         lock.lock(); posterCache[key] = path; lock.unlock()
+        return path.flatMap { URL(string: imageBaseURL + $0) }
+    }
+
+    /// 横版背景图地址（search/multi 取 backdrop_path；详情页背景用，比例匹配不裁切变形）
+    func backdropURL(title: String, year: Int?) async -> URL? {
+        guard let apiKey, !apiKey.isEmpty else { return nil }
+        let key = "\(title)|\(year ?? 0)"
+        lock.lock()
+        if let cached = backdropCache[key] {
+            lock.unlock()
+            return cached.flatMap { URL(string: imageBaseURL + $0) }
+        }
+        lock.unlock()
+
+        let path: String? = await search(title: title, year: year)?["backdrop_path"] as? String
+        lock.lock(); backdropCache[key] = path; lock.unlock()
         return path.flatMap { URL(string: imageBaseURL + $0) }
     }
 
