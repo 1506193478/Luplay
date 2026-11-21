@@ -30,6 +30,14 @@ final class DanmakuEngine: ObservableObject {
     @Published var areaRatio: Double = 0.5        // 显示区域高度占比
     @Published var avoidSubtitle = true           // 字幕区避让
     @Published var offset: Double = 0             // 时间轴校正（秒）
+    /// 屏蔽词列表：命中关键词的弹幕不入池；变更即时重滤并持久化
+    @Published var blocklist: [String] = DanmakuEngine.loadBlocklist() {
+        didSet {
+            guard blocklist != oldValue else { return }
+            UserDefaults.standard.set(blocklist, forKey: "luplay.danmaku.blocklist")
+            refilter()
+        }
+    }
     @Published private(set) var status: Status = .idle
 
     // MARK: 内部状态（锁保护）
@@ -42,6 +50,7 @@ final class DanmakuEngine: ObservableObject {
     }
 
     private let lock = NSLock()
+    private var allComments: [DanmakuComment] = []   // 未过滤原始池（屏蔽词变更时重滤）
     private var comments: [DanmakuComment] = []
     private var nextIndex = 0
     private var live: [Live] = []
@@ -87,7 +96,8 @@ final class DanmakuEngine: ObservableObject {
 
     func load(_ newComments: [DanmakuComment], source: String) {
         lock.lock()
-        comments = newComments.sorted { $0.time < $1.time }
+        allComments = newComments.sorted { $0.time < $1.time }
+        comments = Self.filtered(allComments, by: blocklist)
         nextIndex = 0
         live = []
         laneFreeAt = []
@@ -99,9 +109,46 @@ final class DanmakuEngine: ObservableObject {
 
     func clear() {
         lock.lock()
+        allComments = []
         comments = []; nextIndex = 0; live = []
         lock.unlock()
         status = .idle
+    }
+
+    /// 屏蔽词持久化读取
+    private static func loadBlocklist() -> [String] {
+        UserDefaults.standard.stringArray(forKey: "luplay.danmaku.blocklist") ?? []
+    }
+
+    /// 关键词过滤（大小写不敏感的包含匹配）
+    private static func filtered(_ list: [DanmakuComment], by blocklist: [String]) -> [DanmakuComment] {
+        let words = blocklist.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }.filter { !$0.isEmpty }
+        guard !words.isEmpty else { return list }
+        return list.filter { c in
+            let t = c.text.lowercased()
+            return !words.contains { t.contains($0) }
+        }
+    }
+
+    /// 屏蔽词变更：重滤弹幕池；时间轴位置保持，已上屏弹幕清空待重排
+    private func refilter() {
+        lock.lock()
+        comments = Self.filtered(allComments, by: blocklist)
+        let pos = effectivePosition()
+        nextIndex = comments.firstIndex { $0.time >= pos } ?? comments.count
+        live = []
+        laneFreeAt = []
+        topFreeAt = []
+        bottomFreeAt = []
+        let count = comments.count
+        let source: String
+        if case .ready(_, let s) = status { source = s } else { source = "" }
+        lock.unlock()
+        if case .ready = status {
+            status = .ready(count: count, source: source)
+        }
     }
 
     /// 自动匹配：弹弹play → 失败兜底演示弹幕

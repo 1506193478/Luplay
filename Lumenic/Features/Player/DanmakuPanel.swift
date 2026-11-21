@@ -13,6 +13,7 @@ struct DanmakuPanel: View {
     @State private var searchResults: [DandanAnime] = []
     @State private var isSearching = false
     @State private var searchError: String?
+    @State private var newBlockWord = ""
 
     var body: some View {
         GlassPanelSheet(title: "弹幕", icon: "text.bubble", onClose: onClose) {
@@ -21,6 +22,7 @@ struct DanmakuPanel: View {
                     statusRow
                     toggles
                     steppers
+                    blocklistSection
                     sourceSection
                 }
                 .padding(.horizontal, 20)
@@ -146,6 +148,61 @@ struct DanmakuPanel: View {
                 .frame(width: 28, height: 28)
                 .background(Circle().fill(Color.dsGlassBorder))
         }
+    }
+
+    // MARK: 屏蔽词（命中关键词的弹幕不入池，即时生效并持久化）
+
+    private var blocklistSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("屏蔽词").font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
+            if engine.blocklist.isEmpty {
+                Text("添加关键词，命中的弹幕不再显示")
+                    .font(.dsCaption).foregroundStyle(.dsInk3)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                          alignment: .leading, spacing: 8) {
+                    ForEach(engine.blocklist, id: \.self) { word in
+                        HStack(spacing: 6) {
+                            Text(word).font(.system(size: 12)).foregroundStyle(.dsInk)
+                                .lineLimit(1)
+                            Button {
+                                engine.blocklist.removeAll { $0 == word }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 12)).foregroundStyle(.dsInk3)
+                            }
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Capsule().fill(Color.dsGlassBorder))
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                TextField("输入关键词后回车添加", text: $newBlockWord)
+                    .font(.system(size: 14)).foregroundStyle(.dsInk)
+                    .autocorrectionDisabled()
+                    .onSubmit(addBlockWord)
+                Button(action: addBlockWord) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.accentColor))
+                }
+                .disabled(newBlockWord.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.dsGlassBorder.opacity(0.5)))
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16).fill(Color.dsGlassBorder.opacity(0.5)))
+    }
+
+    private func addBlockWord() {
+        let w = newBlockWord.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !w.isEmpty else { return }
+        if !engine.blocklist.contains(w) { engine.blocklist.append(w) }
+        newBlockWord = ""
     }
 
     // MARK: 弹幕来源（自动匹配 / 手动换绑 / XML 导入）
