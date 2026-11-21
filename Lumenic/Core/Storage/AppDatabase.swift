@@ -89,6 +89,7 @@ final class AppDatabase {
         try dbWriter.write { db in
             try progress.save(db)
         }
+        notifyChanged()
     }
 
     func progress(forKey key: String) throws -> PlaybackProgress? {
@@ -103,6 +104,7 @@ final class AppDatabase {
         try dbWriter.write { db in
             try skipMarker.save(db)
         }
+        notifyChanged()
     }
 
     func skipMarker(forKey key: String) throws -> SkipMarker? {
@@ -118,12 +120,26 @@ final class AppDatabase {
         }
     }
 
+    /// 全部片头片尾标记（云同步用）
+    func allSkipMarkers() throws -> [SkipMarker] {
+        try dbWriter.read { db in
+            try SkipMarker.fetchAll(db)
+        }
+    }
+
     // MARK: 媒体库条目
 
     /// upsert 一条媒体库条目（primaryKey tmdbKey）
     func save(libraryEntry: LibraryEntry) throws {
         try dbWriter.write { db in
             try libraryEntry.save(db)
+        }
+        notifyChanged()
+    }
+
+    func libraryEntry(forKey key: String) throws -> LibraryEntry? {
+        try dbWriter.read { db in
+            try LibraryEntry.filter(Column("tmdbKey") == key).fetchOne(db)
         }
     }
 
@@ -132,5 +148,10 @@ final class AppDatabase {
         try dbWriter.read { db in
             try LibraryEntry.order(Column("addedAt").desc).fetchAll(db)
         }
+    }
+
+    /// 本地数据落盘通知（CloudSyncService 去抖后自动同步）
+    private func notifyChanged() {
+        NotificationCenter.default.post(name: .luplayDataChanged, object: nil)
     }
 }

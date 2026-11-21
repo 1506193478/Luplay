@@ -17,10 +17,7 @@ struct SettingsView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 14)
 
-                group("账号与同步", items: [
-                    ("icloud", "iCloud 同步", "开启后进度/设置多设备同步"),
-                    ("person.crop.circle", "登录账号", "未登录"),
-                ])
+                syncSection
 
                 providerSection
 
@@ -42,6 +39,12 @@ struct SettingsView: View {
         .sheet(isPresented: $showSecrets) {
             SecretsEditView()
         }
+    }
+
+    // MARK: 账号与同步（iCloud 真开关：进度/收藏/跳过标记 CloudKit 同步）
+
+    private var syncSection: some View {
+        SyncSectionView(cloudSync: env.cloudSync)
     }
 
     // MARK: 播放设置（默认内核真实可切换，EngineSelector 读取覆盖）
@@ -206,33 +209,59 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 16)
     }
+}
 
-    @ViewBuilder
-    private func group(_ title: String, items: [(String, String, String)]) -> some View {        VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(.dsInk2)
+// MARK: - iCloud 同步区块（直接观察 CloudSyncService，状态实时刷新）
+
+private struct SyncSectionView: View {
+    @ObservedObject var cloudSync: CloudSyncService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("账号与同步").font(.system(size: 15, weight: .semibold)).foregroundStyle(.dsInk2)
                 .padding(.horizontal, 6)
             GlassSurface(shape: .rounded(16)) {
                 VStack(spacing: 0) {
-                    ForEach(Array(items.enumerated()), id: \.1.1) { i, item in
+                    HStack(spacing: 12) {
+                        Image(systemName: "icloud")
+                            .font(.system(size: 15)).foregroundStyle(.dsInk2).frame(width: 26)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("iCloud 同步").font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
+                            Text(cloudSync.statusText)
+                                .font(.dsCaption).foregroundStyle(.dsInk2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Toggle("", isOn: $cloudSync.enabled)
+                            .labelsHidden()
+                            .tint(Color.accentColor)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 12)
+
+                    Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
+
+                    Button {
+                        Task { await cloudSync.syncNow() }
+                    } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: item.0)
-                                .font(.system(size: 15))
-                                .foregroundStyle(.dsInk2)
-                                .frame(width: 26)
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 15)).foregroundStyle(.dsInk2).frame(width: 26)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.1).font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
-                                Text(item.2).font(.dsCaption).foregroundStyle(.dsInk2)
-                                    .fixedSize(horizontal: false, vertical: true)  // 副标题完整显示不截断
+                                Text("立即同步")
+                                    .font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
+                                Text("播放进度 · 收藏 · 弹幕跳过设置")
+                                    .font(.dsCaption).foregroundStyle(.dsInk2)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.dsInk3)
+                            if cloudSync.syncing {
+                                ProgressView().tint(Color.accentColor)
+                            }
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        if i < items.count - 1 {
-                            Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
-                        }
+                        .padding(.horizontal, 14).padding(.vertical, 12)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!cloudSync.enabled)
                 }
             }
         }

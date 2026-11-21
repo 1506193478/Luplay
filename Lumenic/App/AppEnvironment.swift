@@ -11,11 +11,13 @@ final class AppEnvironment: ObservableObject {
     let aggregator: SearchAggregator
     let dandanplay = DandanplayClient()
     let cast = CastService()
+    let cloudSync = CloudSyncService()
 
     init() {
         self.database = (try? AppDatabase()) ?? .inMemory
         self.aggregator = SearchAggregator(tmdb: tmdb)
         rebuildProviders()
+        cloudSync.configure(database: database)   // iCloud 同步（开关在设置页）
     }
 
     func rebuildProviders() {

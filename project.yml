@@ -41,6 +41,11 @@ targets:
           NSAllowsArbitraryLoads: true      # 局域网片源/自建服务器 http
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+    entitlements:
+      path: Lumenic/Luplay.entitlements
+      properties:
+        com.apple.developer.icloud-services: [CloudKit]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.luplay.Luplay]
 schemes:
   Luplay:
     build:
