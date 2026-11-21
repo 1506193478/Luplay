@@ -1,0 +1,49 @@
+# XcodeGen 工程描述：cd Lumenic && xcodegen generate
+# 注意：需 Xcode 26+ 构建（iOS 26 Liquid Glass 路径依赖新 SDK 符号）
+name: Luplay
+options:
+  bundleIdPrefix: com.luplay
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 6.29.0
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit
+    from: 1.0.0
+targets:
+  Luplay:
+    type: application
+    platform: iOS
+    sources:
+      - path: Lumenic
+    dependencies:
+      - package: GRDB
+      - package: MPVKit
+    settings:
+      base:
+        SWIFT_VERSION: 5.10
+        TARGETED_DEVICE_FAMILY: "1"          # 仅 iPhone
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_x86_64: ""
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Lumenic/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true      # 局域网片源/自建服务器 http
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+schemes:
+  Luplay:
+    build:
+      targets:
+        Luplay: all
+    run:
+      config: Debug
