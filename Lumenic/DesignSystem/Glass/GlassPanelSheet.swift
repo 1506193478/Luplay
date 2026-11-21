@@ -12,7 +12,7 @@ struct GlassPanelSheet<Content: View>: View {
     @State private var appeared = false
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack(alignment: .bottom) {
             // 背景压暗（点击关闭）
             Color.black.opacity(appeared ? 0.35 : 0)
                 .ignoresSafeArea()

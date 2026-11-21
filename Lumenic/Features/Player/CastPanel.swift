@@ -124,6 +124,7 @@ struct CastPanel: View {
                 Image(systemName: isConnected ? "checkmark.tv.fill" : "tv")
                     .foregroundStyle(isConnected ? Color.dsAccent : Color.dsInk2)
                 Text(device.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.dsInk)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
                 Text(isConnected ? "已连接" : "DLNA")
                     .font(.dsCaption).foregroundStyle(isConnected ? Color.dsAccent : Color.dsInk2)

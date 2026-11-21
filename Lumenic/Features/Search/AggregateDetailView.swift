@@ -275,14 +275,17 @@ struct SourceComparePanel: View {
 
     var body: some View {
         GlassPanelSheet(title: "播放来源", icon: "square.stack.3d.up.fill", onClose: onClose) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("共 \(options.count) 个片源，切换后进度不变")
-                    .font(.dsCaption).foregroundStyle(.dsInk2)
-                    .padding(.horizontal, 20).padding(.top, 14)
-                ForEach(options) { option in
-                    optionRow(option)
+            // ScrollView：多片源时超出面板高度可滚动，不再被裁切
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("共 \(options.count) 个片源，切换后进度不变")
+                        .font(.dsCaption).foregroundStyle(.dsInk2)
+                        .padding(.horizontal, 20).padding(.top, 14)
+                    ForEach(options) { option in
+                        optionRow(option)
+                    }
+                    Color.clear.frame(height: 30)
                 }
-                Spacer()
             }
         }
     }

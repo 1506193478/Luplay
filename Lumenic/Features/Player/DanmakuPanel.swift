@@ -25,6 +25,7 @@ struct DanmakuPanel: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
+                .padding(.bottom, 30)
             }
         }
         .fileImporter(isPresented: $showImporter,
