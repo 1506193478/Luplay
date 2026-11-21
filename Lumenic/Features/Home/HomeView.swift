@@ -3,7 +3,10 @@ import SwiftUI
 /// 首页：hero 轮播 + 继续观看 + 我的媒体库 + 热门，对标 lumenic-home.html
 struct HomeView: View {
     var openPlayer: (PlayRequest) -> Void = { _ in }
+    @EnvironmentObject private var env: AppEnvironment
     @State private var heroIndex = 0
+    @State private var progressEntries: [PlaybackProgress] = []
+    @State private var loadedProgress = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -44,11 +47,11 @@ struct HomeView: View {
                         .fill(LinearGradient(colors: [.green, .green.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing))
                         .frame(width: 20, height: 20)
                         .overlay(Text("E").font(.system(size: 11, weight: .bold)).foregroundStyle(.white))
-                    Text("Emby 主服务器")
+                    Text(env.providers.count > 1 ? env.providers[0].displayName : "未配置片源")
                         .font(.system(size: 13.5, weight: .bold))
                         .foregroundStyle(.dsInk)
                         .lineLimit(1)
-                    Text("3 源")
+                    Text("\(env.providers.count) 源")
                         .font(.dsCaption)
                         .foregroundStyle(.dsInk2)
                 }
@@ -99,37 +102,69 @@ struct HomeView: View {
         .mask(LinearGradient(colors: [.black, .black, .clear], startPoint: .init(x: 0.5, y: 0), endPoint: .init(x: 0.5, y: 0.96)))
     }
 
-    // MARK: 继续观看
+    // MARK: 继续观看（真实进度库；无记录时落演示数据）
     private var continueWatching: some View {
         section("继续观看") {
-            ForEach(MockStore.continueWatching) { m in
-                VStack(alignment: .leading, spacing: 7) {
-                    CoverPlaceholder(gradient: m.gradient)
-                        .frame(width: 202, height: 113)
-                        .clipShape(RoundedRectangle(cornerRadius: 13))
-                        .overlay(alignment: .bottomLeading) {
-                            Text("21:21")
-                                .font(.system(size: 10.5))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Capsule().fill(.black.opacity(0.5)))
-                                .padding(9)
-                        }
-                        .overlay(alignment: .bottom) {
-                            GeometryReader { geo in
-                                Capsule().fill(.white.opacity(0.22))
-                                    .overlay(alignment: .leading) {
-                                        Capsule().fill(Color.blue).frame(width: geo.size.width * 0.35)
-                                    }
-                            }
-                            .frame(height: 3)
-                        }
-                    Text(m.title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
-                    Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2)
+            if progressEntries.isEmpty {
+                ForEach(MockStore.continueWatching) { m in
+                    VStack(alignment: .leading, spacing: 7) {
+                        CoverPlaceholder(gradient: m.gradient)
+                            .frame(width: 202, height: 113)
+                            .clipShape(RoundedRectangle(cornerRadius: 13))
+                        Text(m.title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
+                        Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2)
+                    }
+                    .onTapGesture { openPlayer(PlayRequest.demo()) }
                 }
-                .onTapGesture { openPlayer(PlayRequest.demo()) }
+            } else {
+                ForEach(progressEntries, id: \.tmdbKey) { entry in
+                    resumeRow(entry)
+                }
             }
         }
+        .task {
+            guard !loadedProgress else { return }
+            loadedProgress = true
+            progressEntries = (try? env.database.allProgress()) ?? []
+        }
+    }
+
+    /// 进度条目卡片：封面渐变 + 剩余时间 + 进度条；点击续播（媒体 key 对齐，自动恢复进度）
+    private func resumeRow(_ entry: PlaybackProgress) -> some View {
+        let parts = entry.tmdbKey.split(separator: "|", maxSplits: 1).map(String.init)
+        let title = parts.first ?? entry.tmdbKey
+        let episodeLabel = parts.count > 1 ? parts[1] : "正片"
+        let fraction = entry.duration > 0 ? min(1, entry.position / entry.duration) : 0
+        let remaining = max(0, entry.duration - entry.position)
+        return VStack(alignment: .leading, spacing: 7) {
+            CoverPlaceholder(gradient: CoverPalette.forTitle(title))
+                .frame(width: 202, height: 113)
+                .clipShape(RoundedRectangle(cornerRadius: 13))
+                .overlay(alignment: .bottomLeading) {
+                    Text(remaining > 60 ? "还剩 \(Self.timeText(remaining))" : "即将看完")
+                        .font(.system(size: 10.5))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(.black.opacity(0.5)))
+                        .padding(9)
+                }
+                .overlay(alignment: .bottom) {
+                    GeometryReader { geo in
+                        Capsule().fill(.white.opacity(0.22))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(Color.dsAccent).frame(width: geo.size.width * fraction)
+                            }
+                    }
+                    .frame(height: 3)
+                }
+            Text(title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
+            Text(episodeLabel).font(.dsCaption).foregroundStyle(.dsInk2)
+        }
+        .onTapGesture { openPlayer(PlayRequest.demoResuming(title: title, episodeLabel: episodeLabel)) }
+    }
+
+    private static func timeText(_ t: Double) -> String {
+        let total = Int(t), m = total / 60, s = total % 60
+        return String(format: "%d:%02d", m, s)
     }
 
     // MARK: 媒体库

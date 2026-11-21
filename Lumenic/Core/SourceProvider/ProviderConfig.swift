@@ -53,6 +53,14 @@ final class KeychainStore {
         }
         return out as? Data
     }
+
+    // 字符串便捷读写
+    func setString(_ value: String?, for key: String) {
+        set(value?.data(using: .utf8), for: key)
+    }
+    func string(for key: String) -> String? {
+        data(for: key).flatMap { String(data: $0, encoding: .utf8) }
+    }
 }
 
 // MARK: - 片源配置（M4：设置页录入，整表 JSON 存 Keychain）

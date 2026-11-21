@@ -92,6 +92,11 @@ final class PlaybackSession: ObservableObject {
         if let av = engine as? AVPlayerEngine { av.togglePiP() }
     }
 
+    /// 字幕样式/时序属性透传（mpv 生效）
+    func applySubtitleOption(name: String, value: String) {
+        engine.setSubtitleOption(name: name, value: value)
+    }
+
     /// 退出播放器时保存进度
     func close() {
         if let tick, tick.position > 3 {

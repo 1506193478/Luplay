@@ -304,14 +304,8 @@ struct PlayerContainerView: View {
                            option: currentOption,
                            onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             case .subtitle:
-                GlassPanelSheet(title: panel.rawValue, onClose: { withAnimation(.dsEaseOut) { activePanel = nil } }) {
-                    VStack {
-                        Text("字幕设置面板打磨阶段接入")
-                            .font(.dsCaption).foregroundStyle(.dsInk2)
-                            .padding(.top, 40)
-                        Spacer()
-                    }
-                }
+                SubtitlePanel(session: session,
+                              onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             }
         }
     }

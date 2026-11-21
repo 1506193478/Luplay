@@ -11,6 +11,7 @@ struct AggregateDetailView: View {
     @State private var episodeCache: [String: [Episode]] = [:]   // itemId → 集列表
     @State private var isFetching = false
     @State private var errorText: String?
+    @State private var backdropURL: URL?
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -47,10 +48,24 @@ struct AggregateDetailView: View {
     }
 
     private var backdrop: some View {
-        CoverPlaceholder(gradient: CoverPalette.forTitle(result.title))
-            .frame(height: 300)
-            .overlay(LinearGradient(colors: [.clear, .dsPage],
-                                    startPoint: UnitPoint(x: 0.5, y: 0.4), endPoint: .bottom))
+        ZStack {
+            if let backdropURL {
+                AsyncImage(url: backdropURL) { phase in
+                    if let img = phase.image {
+                        img.resizable().scaledToFill()
+                    } else {
+                        CoverPlaceholder(gradient: CoverPalette.forTitle(result.title))
+                    }
+                }
+            } else {
+                CoverPlaceholder(gradient: CoverPalette.forTitle(result.title))
+            }
+        }
+        .frame(height: 300)
+        .overlay(LinearGradient(colors: [.clear, .dsPage],
+                                startPoint: UnitPoint(x: 0.5, y: 0.4), endPoint: .bottom))
+        .clipped()
+        .task { backdropURL = await env.tmdb.posterURL(title: result.title, year: nil) }
     }
 
     private var navBack: some View {

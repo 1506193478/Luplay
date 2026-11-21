@@ -44,10 +44,37 @@ struct DandanEpisode: Identifiable, Hashable {
 
 // MARK: - 弹弹play API 客户端（签名算法：base64(sha256(AppId + Timestamp + Path + AppSecret))）
 
-struct DandanplayConfig {
-    static var appId: String = "dvapv5rxav"
-    static var appSecret: String = "ZI45YwsgEpuQ8CajkIjiJGPVkNfyFTpY"
+/// 弹弹play 密钥：Keychain 存储，设置页可改；首启用种子值（应用审核中，403 时落演示弹幕）
+enum DandanplayConfig {
+    private static let appIdKey = "com.luplay.dandanplay.appId"
+    private static let secretKey = "com.luplay.dandanplay.appSecret"
+    private static let seedAppId = "dvapv5rxav"
+    private static let seedSecret = "ZI45YwsgEpuQ8CajkIjiJGPVkNfyFTpY"
+
+    /// 惰性种子：Keychain 无值时写入默认凭证（仅首启一次）
+    private static func ensureSeeded() {
+        if KeychainStore.shared.string(for: appIdKey) == nil {
+            KeychainStore.shared.setString(seedAppId, for: appIdKey)
+        }
+        if KeychainStore.shared.string(for: secretKey) == nil {
+            KeychainStore.shared.setString(seedSecret, for: secretKey)
+        }
+    }
+
+    static var appId: String {
+        ensureSeeded()
+        return KeychainStore.shared.string(for: appIdKey) ?? ""
+    }
+    static var appSecret: String {
+        ensureSeeded()
+        return KeychainStore.shared.string(for: secretKey) ?? ""
+    }
     static var isConfigured: Bool { !appId.isEmpty && !appSecret.isEmpty }
+
+    static func save(appId: String, secret: String) {
+        KeychainStore.shared.setString(appId, for: appIdKey)
+        KeychainStore.shared.setString(secret, for: secretKey)
+    }
 }
 
 final class DandanplayClient {

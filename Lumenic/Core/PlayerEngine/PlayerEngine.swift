@@ -54,6 +54,13 @@ protocol PlayerEngine: AnyObject {
     func selectSubtitle(_ id: String?)
     func loadExternalSubtitle(_ url: URL)
 
+    /// 字幕样式/时序属性（mpv 生效；AVPlayer 无对应能力默认 no-op）
+    func setSubtitleOption(name: String, value: String)
+}
+
+extension PlayerEngine {
+    func setSubtitleOption(name: String, value: String) {}
+}
     /// 渲染层视图（AVPlayerLayer / mpv Metal）
     func makeRenderView() -> Any
 }

@@ -175,6 +175,13 @@ final class MPVEngine: NSObject, PlayerEngine {
         #endif
     }
 
+    /// 字幕全家桶（方案 §5.2-5）：sub-font-size / sub-delay / sub-pos / sub-border-size 等
+    func setSubtitleOption(name: String, value: String) {
+        #if canImport(MPVKit)
+        setString(name, value)
+        #endif
+    }
+
     // MARK: - 渲染
 
     func makeRenderView() -> Any {

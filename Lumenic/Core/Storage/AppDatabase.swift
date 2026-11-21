@@ -110,4 +110,11 @@ final class AppDatabase {
             try SkipMarker.filter(Column("mediaKey") == key).fetchOne(db)
         }
     }
+
+    /// 全部播放进度（首页继续观看 / 媒体库最近添加）
+    func allProgress() throws -> [PlaybackProgress] {
+        try dbWriter.read { db in
+            try PlaybackProgress.order(Column("updatedAt").desc).fetchAll(db)
+        }
+    }
 }

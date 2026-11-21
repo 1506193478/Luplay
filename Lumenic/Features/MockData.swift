@@ -133,4 +133,9 @@ extension PlayRequest {
         }
         return PlayRequest(title: t.title, episodeLabel: t.episode, options: options)
     }
+
+    /// 继续观看用：演示片源 + 真实媒体 key（标题|集标签），播放器启动时自动从进度库续播
+    static func demoResuming(title: String, episodeLabel: String) -> PlayRequest {
+        PlayRequest(title: title, episodeLabel: episodeLabel, options: demo().options)
+    }
 }
