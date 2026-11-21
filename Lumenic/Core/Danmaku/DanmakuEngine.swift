@@ -483,7 +483,7 @@ final class DanmakuRenderer: NSObject, MTKViewDelegate {
             var x: Float, y: Float, alpha: Float
             switch item.comment.mode {
             case .scroll:
-                let progress = elapsed / 7.0
+                let progress = Float(elapsed) / 7.0
                 let vw = Float(frame.viewport.width)
                 x = vw - progress * (vw + texW)
                 y = Float(item.lane) * Float(frame.laneHeight) + 6 + suppressShift

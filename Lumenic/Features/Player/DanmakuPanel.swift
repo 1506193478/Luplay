@@ -100,23 +100,23 @@ struct DanmakuPanel: View {
 
     private var steppers: some View {
         VStack(spacing: 0) {
-            stepperRow("不透明度", value: Int(engine.opacity * 100), unit: "%",
+            stepperRow("不透明度", value: String(Int(engine.opacity * 100)), unit: "%",
                        minus: { engine.opacity = max(0.2, engine.opacity - 0.05) },
                        plus: { engine.opacity = min(1, engine.opacity + 0.05) })
             Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
-            stepperRow("字号", value: Int(engine.fontSize), unit: "pt",
+            stepperRow("字号", value: String(Int(engine.fontSize)), unit: "pt",
                        minus: { engine.fontSize = max(12, engine.fontSize - 1) },
                        plus: { engine.fontSize = min(32, engine.fontSize + 1) })
             Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
-            stepperRow("显示区域", value: Int(engine.areaRatio * 100), unit: "%",
+            stepperRow("显示区域", value: String(Int(engine.areaRatio * 100)), unit: "%",
                        minus: { engine.areaRatio = max(0.25, engine.areaRatio - 0.25) },
                        plus: { engine.areaRatio = min(1.0, engine.areaRatio + 0.25) })
             Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
-            stepperRow("弹幕密度", value: Int(engine.density * 100), unit: "%",
+            stepperRow("弹幕密度", value: String(Int(engine.density * 100)), unit: "%",
                        minus: { engine.density = max(0.2, engine.density - 0.2) },
                        plus: { engine.density = min(3, engine.density + 0.2) })
             Divider().overlay(Color.dsGlassBorder).padding(.leading, 52)
-            stepperRow("时间轴校正", value: String(format: "%+.1f", engine.offset), unit: "s",
+            stepperRow("时间轴校正", value: Int(engine.offset * 10), unit: "s",
                        minus: { engine.offset -= 0.5 },
                        plus: { engine.offset += 0.5 })
         }
@@ -124,7 +124,7 @@ struct DanmakuPanel: View {
     }
 
     @ViewBuilder
-    private func stepperRow(_ title: String, value: Int, unit: String,
+    private func stepperRow(_ title: String, value: String, unit: String,
                             minus: @escaping () -> Void, plus: @escaping () -> Void) -> some View {
         HStack {
             Text(title).font(.system(size: 15)).foregroundStyle(.dsInk)
