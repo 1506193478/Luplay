@@ -25,6 +25,8 @@ targets:
     settings:
       base:
         SWIFT_VERSION: 5.10
+        # iOS 26 设备 SDK 把 OpenGL ES 弃用升级为错误，按提示定义 GLES_SILENCE_DEPRECATION 消除
+        OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -DGLES_SILENCE_DEPRECATION"
         TARGETED_DEVICE_FAMILY: "1"          # 仅 iPhone
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         # 全量声明支持方向，实际运行时由 AppDelegate 按播放页状态动态收紧（见 OrientationGate.swift）

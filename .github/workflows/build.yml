@@ -33,7 +33,11 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            | xcpretty || exit 1
+            2>&1 | tee build_debug.log
+
+      - name: Errors (on failure)
+        if: failure()
+        run: grep -E "error:" build_debug.log | head -60 || echo "(no error: lines)"
 
   # 出包：Release Archive → 未签名 IPA（TrollStore / Sideloadly / AltStore 侧载重签）
   ipa:
@@ -68,7 +72,11 @@ jobs:
             SWIFT_ENABLE_EXPLICIT_MODULES=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
-            | xcpretty || exit 1
+            2>&1 | tee build_archive.log
+
+      - name: Errors (on failure)
+        if: failure()
+        run: grep -E "error:" build_archive.log | head -60 || echo "(no error: lines)"
 
       - name: Package IPA
         run: |
