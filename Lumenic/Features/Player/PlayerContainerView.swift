@@ -15,6 +15,8 @@ struct PlayerContainerView: View {
     @State private var scrubbing = false
     @State private var scrubValue: Double = 0
     @State private var selectedOptionID: String
+    @State private var skipMarker: SkipMarker?
+    @State private var autoSkipFired = false
 
     init(request: PlayRequest) {
         self.request = request
@@ -35,7 +37,7 @@ struct PlayerContainerView: View {
         request.options.first { $0.id == selectedOptionID } ?? request.bestOption
     }
 
-    enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多" }
+    enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多", debug = "调试" }
 
     var body: some View {
         ZStack {
@@ -48,7 +50,7 @@ struct PlayerContainerView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
 
-            VStack { topBar; Spacer(); controlBar }
+            VStack { topBar; Spacer(); skipPill; controlBar }
             toolCluster
             panelLayer
         }
@@ -56,9 +58,13 @@ struct PlayerContainerView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .task {
+            // 重绑真实数据库（init 时 env 不可用只能用内存库）
+            session.useDatabase(env.database)
             guard let opt = currentOption else { return }
             await session.start(PlayableItem(url: opt.info.url, headers: opt.info.headers,
                                              engine: session.engineKind, startPosition: 0))
+            // 片头片尾标记（M6）
+            skipMarker = try? env.database.skipMarker(forKey: session.storageKey)
             // 弹幕自动匹配（弹弹play；失败自动落演示弹幕）
             danmakuEngine.prepareMatch(title: request.title, episodeLabel: request.episodeLabel)
             await danmakuEngine.autoMatch(title: request.title,
@@ -68,6 +74,7 @@ struct PlayerContainerView: View {
         .onChange(of: session.tick?.position) { _, pos in
             guard let pos else { return }
             danmakuEngine.sync(position: pos)
+            autoSkipIfNeeded(at: pos)
         }
         .onChange(of: session.tick?.duration) { _, dur in
             guard let dur else { return }
@@ -278,10 +285,28 @@ struct PlayerContainerView: View {
             case .danmaku:
                 DanmakuPanel(engine: danmakuEngine, client: env.dandanplay,
                              onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
-            case .subtitle, .cast, .more:
+            case .cast:
+                CastPanel(session: session,
+                          streamInfo: currentOption?.info,
+                          title: "\(request.title) \(request.episodeLabel)",
+                          onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
+            case .more:
+                MorePanel(session: session,
+                          database: env.database,
+                          onOpenDebug: { withAnimation(.dsEaseOut) { activePanel = .debug } },
+                          onClose: {
+                              // 标记可能刚在面板里改过，关闭时同步回来
+                              skipMarker = try? env.database.skipMarker(forKey: session.storageKey)
+                              withAnimation(.dsEaseOut) { activePanel = nil }
+                          })
+            case .debug:
+                DebugPanel(session: session,
+                           option: currentOption,
+                           onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
+            case .subtitle:
                 GlassPanelSheet(title: panel.rawValue, onClose: { withAnimation(.dsEaseOut) { activePanel = nil } }) {
                     VStack {
-                        Text("M3–M6 接入：字幕设置 / 投屏扫描 / 片头片尾·亮度·调试")
+                        Text("字幕设置面板打磨阶段接入")
                             .font(.dsCaption).foregroundStyle(.dsInk2)
                             .padding(.top, 40)
                         Spacer()
@@ -296,6 +321,55 @@ struct PlayerContainerView: View {
         guard option.id != selectedOptionID else { return }
         await session.switchSource(to: PlayableItem(url: option.info.url, headers: option.info.headers,
                                                     engine: session.engineKind, startPosition: 0))
+    }
+
+    // MARK: 片头片尾跳过（M6）
+
+    /// 是否处于片头区间（供"跳过片头"浮标）
+    private var inIntroRange: Bool {
+        guard let m = skipMarker, let start = m.introStart, let end = m.introEnd,
+              let pos = session.tick?.position
+        else { return false }
+        return pos >= start && pos < end - 0.5
+    }
+
+    @ViewBuilder
+    private var skipPill: some View {
+        if inIntroRange {
+            HStack {
+                Spacer()
+                Button { skipIntro() } label: {
+                    HStack(spacing: 6) {
+                        Text("跳过片头")
+                            .font(.system(size: 13, weight: .bold))
+                        Image(systemName: "forward.end.fill").font(.system(size: 11, weight: .bold))
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 9)
+                }
+                .background(Capsule().fill(Color.dsGlassFill))
+                .overlay(Capsule().strokeBorder(Color.dsGlassBorder))
+                .foregroundStyle(.dsInk)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 10)
+            .transition(.opacity.combined(with: .move(edge: .bottom)))
+        }
+    }
+
+    /// 自动跳过：进入片头区间即跳到片头结束点（每次进入区间只触发一次）
+    private func autoSkipIfNeeded(at pos: Double) {
+        guard let m = skipMarker, let start = m.introStart, let end = m.introEnd else { return }
+        let inRange = pos >= start && pos < end - 0.5
+        if !inRange { autoSkipFired = false }
+        guard inRange, m.autoSkip, !autoSkipFired else { return }
+        autoSkipFired = true
+        skipIntro()
+    }
+
+    private func skipIntro() {
+        guard let m = skipMarker, let end = m.introEnd else { return }
+        session.seek(to: end)
+        if !session.isPlaying { session.play() }
     }
 
     private func timeString(_ t: Double) -> String {

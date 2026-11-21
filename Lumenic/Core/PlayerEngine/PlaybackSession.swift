@@ -35,6 +35,12 @@ final class PlaybackSession: ObservableObject {
         self.database = database
     }
 
+    /// 进度存储 key（片头片尾标记等共用）
+    var storageKey: String { mediaKey }
+
+    /// UI 层拿不到 env 时先用内存库初始化，进场后重绑真实库（保证进度落盘）
+    func useDatabase(_ db: AppDatabase) { database = db }
+
     /// 从存储恢复进度并加载
     func start(_ item: PlayableItem) async {
         self.item = item

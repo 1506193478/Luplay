@@ -16,6 +16,8 @@ extension Color {
     static let dsPage = Color(red: 0.08, green: 0.06, blue: 0.04)
     /// 评分金
     static let dsGold = Color(red: 1.0, green: 0.84, blue: 0.04)
+    /// 强调色（方案 §5.3：iOS 系统蓝 #0A84FF）
+    static let dsAccent = Color(red: 0.039, green: 0.518, blue: 1.0)
 }
 
 extension Font {

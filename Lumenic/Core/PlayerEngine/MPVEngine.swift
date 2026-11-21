@@ -63,6 +63,7 @@ final class MPVEngine: NSObject, PlayerEngine {
         mpv_observe_property(h, 3, "demuxer-cache-time", MPV_FORMAT_DOUBLE)
         mpv_observe_property(h, 4, "container-fps", MPV_FORMAT_DOUBLE)
         mpv_observe_property(h, 5, "paused", MPV_FORMAT_FLAG)
+        mpv_observe_property(h, 6, "video-bitrate", MPV_FORMAT_DOUBLE)
 
         mpv_set_wakeup_callback(h, { ctx in
             guard let ctx else { return }
@@ -229,6 +230,7 @@ final class MPVEngine: NSObject, PlayerEngine {
                 case "duration": if prop.pointee.format == MPV_FORMAT_DOUBLE { cachedDuration = prop.pointee.data.load(as: Double.self) }
                 case "demuxer-cache-time": if prop.pointee.format == MPV_FORMAT_DOUBLE { cachedBuffered = prop.pointee.data.load(as: Double.self) }
                 case "container-fps": if prop.pointee.format == MPV_FORMAT_DOUBLE { cachedFPS = prop.pointee.data.load(as: Double.self) }
+                case "video-bitrate": if prop.pointee.format == MPV_FORMAT_DOUBLE { cachedBitrate = prop.pointee.data.load(as: Double.self) }
                 default: break
                 }
                 tickContinuation?.yield(PlaybackTick(

@@ -22,6 +22,16 @@ struct LibraryEntry: Codable, FetchableRecord, PersistableRecord {
     var addedAt: Date
 }
 
+/// 片头片尾标记（M6）：按媒体 key 记录跳过区间与自动跳过开关
+struct SkipMarker: Codable, FetchableRecord, PersistableRecord {
+    static let databaseTableName = "skip_markers"
+    var mediaKey: String
+    var introStart: Double?
+    var introEnd: Double?
+    var outroStart: Double?
+    var autoSkip: Bool
+}
+
 final class AppDatabase {
     let dbWriter: any DatabaseWriter
 
@@ -61,6 +71,15 @@ final class AppDatabase {
                 t.column("addedAt", .datetime).notNull()
             }
         }
+        m.registerMigration("v2") { db in
+            try db.create(table: "skip_markers") { t in
+                t.primaryKey("mediaKey", .text)
+                t.column("introStart", .double)
+                t.column("introEnd", .double)
+                t.column("outroStart", .double)
+                t.column("autoSkip", .boolean).notNull().defaults(to: true)
+            }
+        }
         return m
     }
 
@@ -75,6 +94,20 @@ final class AppDatabase {
     func progress(forKey key: String) throws -> PlaybackProgress? {
         try dbWriter.read { db in
             try PlaybackProgress.filter(Column("tmdbKey") == key).fetchOne(db)
+        }
+    }
+
+    // MARK: 片头片尾标记
+
+    func save(skipMarker: SkipMarker) throws {
+        try dbWriter.write { db in
+            try skipMarker.save(db)
+        }
+    }
+
+    func skipMarker(forKey key: String) throws -> SkipMarker? {
+        try dbWriter.read { db in
+            try SkipMarker.filter(Column("mediaKey") == key).fetchOne(db)
         }
     }
 }
