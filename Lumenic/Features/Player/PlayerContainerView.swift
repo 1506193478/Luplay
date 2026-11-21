@@ -9,6 +9,7 @@ struct PlayerContainerView: View {
     @EnvironmentObject private var env: AppEnvironment
 
     @StateObject private var session: PlaybackSession
+    @StateObject private var danmakuEngine = DanmakuEngine()
     @State private var controlsVisible = true
     @State private var activePanel: Panel?
     @State private var scrubbing = false
@@ -42,6 +43,11 @@ struct PlayerContainerView: View {
             videoLayer
                 .ignoresSafeArea()
 
+            // 弹幕层（Metal 自绘，位于视频之上、控件之下）
+            DanmakuOverlay(engine: danmakuEngine)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
             VStack { topBar; Spacer(); controlBar }
             toolCluster
             panelLayer
@@ -53,6 +59,29 @@ struct PlayerContainerView: View {
             guard let opt = currentOption else { return }
             await session.start(PlayableItem(url: opt.info.url, headers: opt.info.headers,
                                              engine: session.engineKind, startPosition: 0))
+            // 弹幕自动匹配（弹弹play；失败自动落演示弹幕）
+            danmakuEngine.prepareMatch(title: request.title, episodeLabel: request.episodeLabel)
+            await danmakuEngine.autoMatch(title: request.title,
+                                          episodeLabel: request.episodeLabel,
+                                          client: env.dandanplay)
+        }
+        .onChange(of: session.tick?.position) { _, pos in
+            guard let pos else { return }
+            danmakuEngine.sync(position: pos)
+        }
+        .onChange(of: session.tick?.duration) { _, dur in
+            guard let dur else { return }
+            danmakuEngine.setDuration(dur)
+        }
+        .onChange(of: session.isPlaying) { _, playing in
+            danmakuEngine.setPlaying(playing, rate: session.rate)
+        }
+        .onChange(of: session.rate) { _, rate in
+            danmakuEngine.setPlaying(session.isPlaying, rate: rate)
+        }
+        // 三层防遮挡之二：控件浮现 → 弹幕池下沉 + 让透明度
+        .onChange(of: controlsVisible) { _, visible in
+            danmakuEngine.setSuppressed(visible ? 1 : 0)
         }
         .onDisappear { session.close() }
     }
@@ -247,7 +276,8 @@ struct PlayerContainerView: View {
                                    },
                                    onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             case .danmaku:
-                DanmakuPanel(onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
+                DanmakuPanel(engine: danmakuEngine, client: env.dandanplay,
+                             onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             case .subtitle, .cast, .more:
                 GlassPanelSheet(title: panel.rawValue, onClose: { withAnimation(.dsEaseOut) { activePanel = nil } }) {
                     VStack {

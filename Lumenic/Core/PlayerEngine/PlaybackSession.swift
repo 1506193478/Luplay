@@ -20,6 +20,7 @@ final class PlaybackSession: ObservableObject {
     @Published private(set) var tick: PlaybackTick?
     @Published private(set) var engineKind: EngineKind
     @Published var rate: Double = 1.0
+    @Published private(set) var isPlaying = false
 
     private(set) var engine: PlayerEngine
     private var item: PlayableItem?
@@ -43,6 +44,7 @@ final class PlaybackSession: ObservableObject {
                                         startPosition: max(item.startPosition, restored))
         try? await engine.load(withPosition)
         engine.play()
+        isPlaying = true
         consumeTicks()
     }
 
@@ -58,6 +60,7 @@ final class PlaybackSession: ObservableObject {
         try? await engine.load(moved)
         engine.setRate(rate)
         engine.play()
+        isPlaying = true
         consumeTicks()
     }
 
@@ -70,13 +73,13 @@ final class PlaybackSession: ObservableObject {
         try? await engine.load(moved)
         engine.setRate(rate)
         engine.play()
+        isPlaying = true
         consumeTicks()
         item = newItem
     }
 
-    func play() { engine.play() }
-    func pause() { engine.pause() }
-    var isPlaying: Bool { engine.isPlaying }
+    func play() { engine.play(); isPlaying = true }
+    func pause() { engine.pause(); isPlaying = false }
     func seek(to seconds: TimeInterval) { engine.seek(to: seconds) }
     func setRate(_ r: Double) { rate = r; engine.setRate(r) }
     func togglePiP() {
@@ -93,6 +96,7 @@ final class PlaybackSession: ObservableObject {
         }
         tickTask?.cancel()
         engine.pause()
+        isPlaying = false
     }
 
     private func consumeTicks() {
