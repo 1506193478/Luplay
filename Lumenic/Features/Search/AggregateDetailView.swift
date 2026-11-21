@@ -147,7 +147,7 @@ struct AggregateDetailView: View {
                     .font(.system(size: 15)).foregroundStyle(.dsInk2).frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.title).font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
-                        .lineLimit(1)
+                        .lineLimit(1).minimumScaleFactor(0.8)
                     Text(subtitle).font(.dsCaption).foregroundStyle(.dsInk2)
                 }
                 Spacer()

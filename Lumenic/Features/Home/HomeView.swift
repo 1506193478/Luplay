@@ -77,6 +77,7 @@ struct HomeView: View {
                                 .foregroundStyle(.white)
                                 .shadow(color: .black.opacity(0.6), radius: 12)
                                 .lineLimit(2)
+                                .minimumScaleFactor(0.8)
                             Text(m.subtitle)
                                 .font(.dsCaption)
                                 .foregroundStyle(.white.opacity(0.72))
@@ -114,8 +115,12 @@ struct HomeView: View {
                         CoverPlaceholder(gradient: m.gradient)
                             .frame(width: 202, height: 113)
                             .clipShape(RoundedRectangle(cornerRadius: 13))
-                        Text(m.title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
+                        Text(m.title).font(.dsCardTitle).foregroundStyle(.dsInk)
+                            .lineLimit(1).minimumScaleFactor(0.85)
+                            .frame(maxWidth: 202, alignment: .leading)
                         Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2)
+                            .lineLimit(1)
+                            .frame(maxWidth: 202, alignment: .leading)
                     }
                     .onTapGesture { openPlayer(PlayRequest.demo()) }
                 }
@@ -159,8 +164,12 @@ struct HomeView: View {
                     }
                     .frame(height: 3)
                 }
-            Text(title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
+            Text(title).font(.dsCardTitle).foregroundStyle(.dsInk)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .frame(maxWidth: 202, alignment: .leading)
             Text(episodeLabel).font(.dsCaption).foregroundStyle(.dsInk2)
+                .lineLimit(1)
+                .frame(maxWidth: 202, alignment: .leading)
         }
         .onTapGesture { openPlayer(PlayRequest.demoResuming(title: title, episodeLabel: episodeLabel)) }
     }
@@ -222,9 +231,13 @@ struct HomeView: View {
                                 .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(.white)
                                 .shadow(color: .black.opacity(0.65), radius: 8)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .padding(.horizontal, 6)
                                 .padding(.bottom, 24)
                         }
                     Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2).lineLimit(1)
+                        .frame(maxWidth: 112, alignment: .leading)
                 }
                 .onTapGesture { openPlayer(PlayRequest.demo()) }
             }

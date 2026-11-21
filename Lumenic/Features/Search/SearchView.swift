@@ -119,6 +119,7 @@ struct SearchView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 6) {
                 Text(result.title).font(.system(size: 17, weight: .bold)).foregroundStyle(.dsInk)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                 Text("\(result.items.count) 个片源命中")
                     .font(.dsCaption).foregroundStyle(.dsInk2)
                 Spacer()

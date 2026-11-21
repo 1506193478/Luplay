@@ -85,7 +85,8 @@ struct LibraryView: View {
             }
             .frame(height: 150)
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            Text(entry.title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
+            Text(entry.title).font(.dsCardTitle).foregroundStyle(.dsInk)
+                .lineLimit(1).minimumScaleFactor(0.85)
         }
     }
 
@@ -96,6 +97,7 @@ struct LibraryView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16))
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.displayName).font(.system(size: 17, weight: .heavy)).foregroundStyle(.white)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                 Text(provider.isConfigured ? "已连接" : "未配置")
                     .font(.dsCaption).foregroundStyle(.white.opacity(0.7))
             }
@@ -167,7 +169,8 @@ struct LibraryView: View {
                     }
                     .frame(height: 3)
                 }
-            Text(title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
+            Text(title).font(.dsCardTitle).foregroundStyle(.dsInk)
+                .lineLimit(1).minimumScaleFactor(0.85)
         }
     }
 }

@@ -44,7 +44,8 @@ struct RootView: View {
                 tabButton(.search, icon: "magnifyingglass", label: "搜索")
                 tabButton(.settings, icon: "gearshape.fill", label: "设置")
             }
-            .padding(.vertical, 10)
+            // 不加内层 vertical padding：玻璃自带 10pt 内边距，
+            // 内容(图标21+间距3+标签12=36)在 62pt 外框下垂直居中不溢出
         }
         .frame(height: 62)
         .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
