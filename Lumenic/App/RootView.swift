@@ -18,7 +18,7 @@ struct RootView: View {
         }
         .ignoresSafeArea(.keyboard)
         .fullScreenCover(item: $playerSession) { session in
-            PlayerContainerView(target: session.target)
+            PlayerContainerView(request: session.request)
         }
     }
 
@@ -27,13 +27,13 @@ struct RootView: View {
         switch tab {
         case .home: HomeView(openPlayer: play(_:))
         case .library: LibraryView()
-        case .search: SearchView()
+        case .search: SearchView(openPlayer: play(_:))
         case .settings: SettingsView()
         }
     }
 
-    private func play(_ item: MockPlayTarget) {
-        playerSession = PlayerSession(target: item)
+    private func play(_ request: PlayRequest) {
+        playerSession = PlayerSession(request: request)
     }
 
     private var tabBar: some View {
@@ -66,8 +66,8 @@ struct RootView: View {
     }
 }
 
-/// 播放器入口会话（M2/M3 接入真实引擎后由 PlaybackSession 替代）
+/// 播放器入口会话（持有真实片源播放请求）
 struct PlayerSession: Identifiable {
     let id = UUID()
-    let target: MockPlayTarget
+    let request: PlayRequest
 }

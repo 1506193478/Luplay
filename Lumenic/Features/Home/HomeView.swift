@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 首页：hero 轮播 + 继续观看 + 我的媒体库 + 热门，对标 lumenic-home.html
 struct HomeView: View {
-    var openPlayer: (MockPlayTarget) -> Void = { _ in }
+    var openPlayer: (PlayRequest) -> Void = { _ in }
     @State private var heroIndex = 0
 
     var body: some View {
@@ -127,7 +127,7 @@ struct HomeView: View {
                     Text(m.title).font(.dsCardTitle).foregroundStyle(.dsInk).lineLimit(1)
                     Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2)
                 }
-                .onTapGesture { openPlayer(MockStore.playTarget) }
+                .onTapGesture { openPlayer(PlayRequest.demo()) }
             }
         }
     }
@@ -188,7 +188,7 @@ struct HomeView: View {
                         }
                     Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2).lineLimit(1)
                 }
-                .onTapGesture { openPlayer(MockStore.playTarget) }
+                .onTapGesture { openPlayer(PlayRequest.demo()) }
             }
         }
     }

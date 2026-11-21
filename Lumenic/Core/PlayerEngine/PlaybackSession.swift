@@ -61,6 +61,19 @@ final class PlaybackSession: ObservableObject {
         consumeTicks()
     }
 
+    /// 换片源（同内核重载新地址，进度不丢；M4 来源对比面板用）
+    func switchSource(to newItem: PlayableItem) async {
+        let position = tick?.position ?? 0
+        engine.pause()
+        let moved = PlayableItem(url: newItem.url, headers: newItem.headers,
+                                 engine: engineKind, startPosition: position)
+        try? await engine.load(moved)
+        engine.setRate(rate)
+        engine.play()
+        consumeTicks()
+        item = newItem
+    }
+
     func play() { engine.play() }
     func pause() { engine.pause() }
     var isPlaying: Bool { engine.isPlaying }

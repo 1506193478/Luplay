@@ -1,23 +1,32 @@
 import SwiftUI
 
-/// 聚合搜索：搜索框 + 聚合结果（多片源命中合并），对标“聚合搜索与片源对比”
+/// 聚合搜索：搜索框 + 多片源并发检索 + TMDB 归一化合并（M4 接通真实片源）
 struct SearchView: View {
+    var openPlayer: (PlayRequest) -> Void = { _ in }
+    @EnvironmentObject private var env: AppEnvironment
     @State private var query = ""
     @State private var searched = false
-    @State private var detailTarget: MockMedia?
+    @State private var detailTarget: SearchAggregator.AggregatedResult?
 
-    private var results: [MockMedia] { searched ? MockStore.popular : [] }
+    private var aggregator: SearchAggregator { env.aggregator }
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar.padding(.horizontal, 16).padding(.top, 10)
-            if !searched { hotList } else { resultList }
+            if !searched {
+                hotList
+            } else {
+                resultList
+            }
             Spacer(minLength: 0)
         }
         .background(Color.dsPage.ignoresSafeArea())
-        .sheet(item: $detailTarget) { _ in
-            AggregateDetailView(media: MockStore.popular[0])
-                .presentationDetents([.large])
+        .sheet(item: $detailTarget) { result in
+            AggregateDetailView(result: result, onPlay: { request in
+                detailTarget = nil
+                openPlayer(request)
+            })
+            .presentationDetents([.large])
         }
     }
 
@@ -27,9 +36,13 @@ struct SearchView: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.dsInk2)
                 TextField("搜索片名，聚合全部片源", text: $query)
                     .foregroundStyle(.dsInk)
-                    .onSubmit { withAnimation(.dsEaseOut) { searched = true } }
+                    .onSubmit { runSearch() }
                 if !query.isEmpty {
-                    Button { query = ""; searched = false } label: {
+                    Button {
+                        query = ""
+                        searched = false
+                        aggregator.results = []
+                    } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.dsInk3)
                     }
                 }
@@ -39,19 +52,27 @@ struct SearchView: View {
         .frame(height: 48)
     }
 
+    private func runSearch() {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        withAnimation(.dsEaseOut) { searched = true }
+        Task { await aggregator.search(query: q, providers: env.providers) }
+    }
+
     private var hotList: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("热门搜索").font(.dsSection).foregroundStyle(.dsInk)
                 .padding(.horizontal, 20).padding(.top, 22)
             ForEach(["蚀骨时差", "好东西", "星际回声", "漫长的季节"], id: \.self) { kw in
                 Button {
-                    query = kw; searched = true
+                    query = kw
+                    runSearch()
                 } label: {
                     HStack {
                         Image(systemName: "flame.fill").foregroundStyle(.orange)
                         Text(kw).foregroundStyle(.dsInk)
                         Spacer()
-                        Text("3 个片源").font(.dsCaption).foregroundStyle(.dsInk3)
+                        Text("聚合搜索").font(.dsCaption).foregroundStyle(.dsInk3)
                     }
                     .padding(.horizontal, 20).padding(.vertical, 10)
                 }
@@ -60,11 +81,29 @@ struct SearchView: View {
         }
     }
 
+    @ViewBuilder
     private var resultList: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
-                ForEach(results) { m in
-                    Button { detailTarget = m } label: { aggregateCard(m) }
+                if aggregator.isSearching {
+                    VStack(spacing: 10) {
+                        ProgressView()
+                        Text("正在聚合全部片源…").font(.dsCaption).foregroundStyle(.dsInk2)
+                    }
+                    .padding(.top, 60)
+                } else if aggregator.results.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "film.stack").font(.system(size: 30)).foregroundStyle(.dsInk3)
+                        Text("没有命中结果")
+                            .font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk2)
+                        Text("确认已在设置中配置并登录片源服务器")
+                            .font(.dsCaption).foregroundStyle(.dsInk3)
+                    }
+                    .padding(.top, 60)
+                } else {
+                    ForEach(aggregator.results) { result in
+                        Button { detailTarget = result } label: { aggregateCard(result) }
+                    }
                 }
                 Color.clear.frame(height: 120)
             }
@@ -72,26 +111,24 @@ struct SearchView: View {
         }
     }
 
-    /// 聚合结果卡：TMDB 归一化后，右侧显示命中的片源数
-    private func aggregateCard(_ m: MockMedia) -> some View {
+    /// 聚合结果卡：归一化标题 + 命中的片源徽章
+    private func aggregateCard(_ result: SearchAggregator.AggregatedResult) -> some View {
         HStack(spacing: 12) {
-            CoverPlaceholder(gradient: m.gradient)
+            CoverPlaceholder(gradient: CoverPalette.forTitle(result.title))
                 .frame(width: 86, height: 118)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 6) {
-                Text(m.title).font(.system(size: 17, weight: .bold)).foregroundStyle(.dsInk)
-                Text(m.subtitle).font(.dsCaption).foregroundStyle(.dsInk2)
-                if let s = m.score {
-                    HStack(spacing: 3) {
-                        Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.dsGold)
-                        Text(String(format: "%.1f", s)).font(.dsCaption).foregroundStyle(.dsGold)
-                    }
-                }
+                Text(result.title).font(.system(size: 17, weight: .bold)).foregroundStyle(.dsInk)
+                Text("\(result.items.count) 个片源命中")
+                    .font(.dsCaption).foregroundStyle(.dsInk2)
                 Spacer()
                 HStack(spacing: 6) {
-                    sourceBadge("BEmby", .blue)
-                    sourceBadge("OkEmby", .green)
-                    sourceBadge("115", .orange)
+                    let names = result.items.compactMap { item in
+                        env.providers.first { $0.id == item.providerId }?.displayName
+                    }
+                    ForEach(Array(Set(names).sorted().prefix(3)), id: \.self) { name in
+                        sourceBadge(name)
+                    }
                 }
             }
             Spacer(minLength: 0)
@@ -101,12 +138,12 @@ struct SearchView: View {
         .background(GlassSurface(shape: .rounded(16)) { Color.clear })
     }
 
-    private func sourceBadge(_ name: String, _ color: Color) -> some View {
+    private func sourceBadge(_ name: String) -> some View {
         Text(name)
             .font(.system(size: 9.5, weight: .bold))
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Capsule().fill(color.opacity(0.85)))
+            .background(Capsule().fill(Color.accentColor.opacity(0.85)))
     }
 }

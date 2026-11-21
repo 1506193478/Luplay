@@ -2,9 +2,9 @@ import SwiftUI
 import AVKit
 
 /// 播放器容器：全屏视频层 + 顶部信息条 + 底部控制条 + 右侧工具簇 + 玻璃面板。
-/// 视频输出与控制走 PlaybackSession（M2：AVPlayerEngine）。
+/// 视频输出与控制走 PlaybackSession；片源来自 PlayRequest（真实片源 / 演示流）。
 struct PlayerContainerView: View {
-    let target: MockPlayTarget
+    let request: PlayRequest
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var env: AppEnvironment
 
@@ -13,22 +13,25 @@ struct PlayerContainerView: View {
     @State private var activePanel: Panel?
     @State private var scrubbing = false
     @State private var scrubValue: Double = 0
+    @State private var selectedOptionID: String
 
-    init(target: MockPlayTarget) {
-        self.target = target
-        // 内核自动选择（方案 §3.4）：HLS/MP4→AVPlayer，MKV→mpv；mpv 不可用时回退
-        var kind = EngineSelector.recommend(
-            container: target.demoURL.pathExtension.isEmpty ? "m3u8" : target.demoURL.pathExtension,
-            codec: nil,
-            hdr: target.badge.contains("杜比") ? "杜比视界" : nil
-        )
+    init(request: PlayRequest) {
+        self.request = request
+        // 内核自动选择（方案 §3.4）：取质量分最高片源的推荐内核；mpv 不可用时回退
+        let best = request.bestOption
+        var kind = best?.info.recommendedEngine ?? .avplayer
         if kind == .mpv && !MPVEngine.isAvailable { kind = .avplayer }
-        // M4 接入真实片源后 mediaKey 换成 tmdbKey
+        let mediaKey = "\(request.title)|\(request.episodeLabel)"
         _session = StateObject(wrappedValue: PlaybackSession(
             kind: kind,
-            mediaKey: target.title,
+            mediaKey: mediaKey,
             database: AppDatabase.inMemory
         ))
+        _selectedOptionID = State(initialValue: best?.id ?? "")
+    }
+
+    private var currentOption: StreamOption? {
+        request.options.first { $0.id == selectedOptionID } ?? request.bestOption
     }
 
     enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多" }
@@ -47,8 +50,9 @@ struct PlayerContainerView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .task {
-            await session.start(PlayableItem(url: target.demoURL, headers: [:],
-                                             engine: .avplayer, startPosition: 0))
+            guard let opt = currentOption else { return }
+            await session.start(PlayableItem(url: opt.info.url, headers: opt.info.headers,
+                                             engine: session.engineKind, startPosition: 0))
         }
         .onDisappear { session.close() }
     }
@@ -67,11 +71,20 @@ struct PlayerContainerView: View {
                     .foregroundStyle(.dsInk)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(target.title).font(.system(size: 16, weight: .bold)).foregroundStyle(.dsInk)
-                Text(target.episode).font(.dsCaption).foregroundStyle(.dsInk2)
+                Text(request.title).font(.system(size: 16, weight: .bold)).foregroundStyle(.dsInk)
+                Text(request.episodeLabel).font(.dsCaption).foregroundStyle(.dsInk2)
                 HStack(spacing: 5) {
-                    Text(target.badge).badgeStyle(highlight: true)
-                    Text("\(target.bitrate) · \(target.container)").font(.dsCaption).foregroundStyle(.dsInk2)
+                    if let info = currentOption?.info {
+                        Text(info.hdr).badgeStyle(highlight: info.hdr != "SDR")
+                        Text("\(info.resolution) · \(info.container.uppercased())")
+                            .font(.dsCaption).foregroundStyle(.dsInk2)
+                        if info.bitrateMbps > 0 {
+                            Text(String(format: "%.1fMbps", info.bitrateMbps))
+                                .font(.dsCaption).foregroundStyle(.dsInk2)
+                        }
+                    } else {
+                        Text("无片源").font(.dsCaption).foregroundStyle(.dsInk2)
+                    }
                 }
             }
             Spacer()
@@ -227,8 +240,11 @@ struct PlayerContainerView: View {
         if let panel = activePanel {
             switch panel {
             case .sources:
-                SourceComparePanel(sources: target.sources,
-                                   selected: .constant(target.sources[1]),
+                SourceComparePanel(options: request.options,
+                                   selectedID: $selectedOptionID,
+                                   onSelect: { option in
+                                       Task { await switchTo(option) }
+                                   },
                                    onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             case .danmaku:
                 DanmakuPanel(onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
@@ -243,6 +259,13 @@ struct PlayerContainerView: View {
                 }
             }
         }
+    }
+
+    /// 换源（进度保留，M4 来源对比）
+    private func switchTo(_ option: StreamOption) async {
+        guard option.id != selectedOptionID else { return }
+        await session.switchSource(to: PlayableItem(url: option.info.url, headers: option.info.headers,
+                                                    engine: session.engineKind, startPosition: 0))
     }
 
     private func timeString(_ t: Double) -> String {

@@ -101,3 +101,36 @@ struct CoverPlaceholder: View {
         }
     }
 }
+
+/// 按标题哈希取封面渐变（无 TMDB 海报时的稳定占位色）
+enum CoverPalette {
+    static let palette: [[Color]] = [
+        [Color(red: 0.55, green: 0.38, blue: 0.12), .black],
+        [Color(red: 0.16, green: 0.30, blue: 0.42), .black],
+        [Color(red: 0.30, green: 0.10, blue: 0.34), .black],
+        [Color(red: 0.42, green: 0.30, blue: 0.10), .black],
+        [Color(red: 0.14, green: 0.34, blue: 0.22), .black],
+        [Color(red: 0.36, green: 0.12, blue: 0.12), .black],
+    ]
+
+    static func forTitle(_ title: String) -> [Color] {
+        let h = title.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return palette[abs(h) % palette.count]
+    }
+}
+
+// MARK: - 演示播放请求（未配置片源时兜底，走 Apple bipbop HLS 流）
+
+extension PlayRequest {
+    static func demo() -> PlayRequest {
+        let t = MockStore.playTarget
+        let options = t.sources.enumerated().map { i, s in
+            StreamOption(id: "demo-\(i)", providerId: "demo", serverName: s.server,
+                         info: MediaProbe.makeStreamInfo(
+                             url: t.demoURL, headers: [:], container: "m3u8",
+                             codec: nil, resolution: s.resolution, hdr: s.hdr,
+                             bitrateMbps: Double(s.bitrate.replacingOccurrences(of: " Mbps", with: "")) ?? 0))
+        }
+        return PlayRequest(title: t.title, episodeLabel: t.episode, options: options)
+    }
+}

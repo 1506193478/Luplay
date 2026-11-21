@@ -92,3 +92,30 @@ final class SearchAggregator: ObservableObject {
             .sorted { $0.items.count > $1.items.count }
     }
 }
+
+// MARK: - 播放请求（M4：真实片源 → 播放器，多源对比）
+
+/// 一条可播放的片源选项（服务器 × 单集 → 播放地址 + 媒体信息）
+struct StreamOption: Identifiable {
+    let id: String          // itemId|episodeId 组合
+    let providerId: String
+    let serverName: String
+    let info: StreamInfo
+}
+
+struct PlayRequest: Identifiable {
+    let id = UUID()
+    let title: String
+    let episodeLabel: String
+    let options: [StreamOption]
+
+    /// 质量分最高的片源（默认选中）
+    var bestOption: StreamOption? {
+        options.max { $0.info.qualityScore < $1.info.qualityScore }
+    }
+}
+
+extension SourceProvider {
+    /// 连接测试（设置页用）
+    func testConnection() async throws -> String { throw ProviderError.notImplemented }
+}
