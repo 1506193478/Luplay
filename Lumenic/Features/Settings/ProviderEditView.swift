@@ -31,18 +31,33 @@ struct ProviderEditView: View {
 
     private var defaultName: String { kind.title }
 
+    /// 地址规范化：无协议头自动补 http://（局域网 NAS 常见省写）
+    private var normalizedURL: String {
+        var s = serverURL.trimmingCharacters(in: .whitespaces)
+        if !s.isEmpty,
+           !s.lowercased().hasPrefix("http://"), !s.lowercased().hasPrefix("https://") {
+            s = "http://" + s
+        }
+        return s
+    }
+
     private var draft: ProviderConfig {
         ProviderConfig(id: existing?.id ?? UUID().uuidString,
                        kind: kind,
                        name: name.trimmingCharacters(in: .whitespaces),
-                       serverURL: serverURL.trimmingCharacters(in: .whitespaces),
+                       serverURL: normalizedURL,
                        username: username,
                        password: password,
                        rootPath: rootPath)
     }
 
+    /// 校验必须带 http/https 协议头且有主机名，防止 "nas:8096" 这类地址存进配置
     private var canSave: Bool {
-        URL(string: serverURL.trimmingCharacters(in: .whitespaces)) != nil
+        guard let url = URL(string: normalizedURL),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host != nil else { return false }
+        return true
     }
 
     var body: some View {
@@ -50,13 +65,13 @@ struct ProviderEditView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 14) {
                     kindPicker
-                    fieldRow(title: "显示名（可选）", text: $name, placeholder: defaultName, secure: false)
+                    fieldRow(title: "显示名（可选）", text: $name, placeholder: defaultName, secure: false, urlKeyboard: false)
                     fieldRow(title: "服务器地址", text: $serverURL,
-                             placeholder: kind == .emby ? "http://nas:8096" : "http://nas:5244", secure: false)
-                    fieldRow(title: "账号", text: $username, placeholder: "用户名", secure: false)
-                    fieldRow(title: "密码", text: $password, placeholder: "密码", secure: true)
+                             placeholder: kind == .emby ? "http://nas:8096" : "http://nas:5244", secure: false, urlKeyboard: true)
+                    fieldRow(title: "账号", text: $username, placeholder: "用户名", secure: false, urlKeyboard: false)
+                    fieldRow(title: "密码", text: $password, placeholder: "密码", secure: true, urlKeyboard: false)
                     if kind == .webdav || kind == .alist {
-                        fieldRow(title: "起始目录（可选）", text: $rootPath, placeholder: "/媒体库", secure: false)
+                        fieldRow(title: "起始目录（可选）", text: $rootPath, placeholder: "/媒体库", secure: false, urlKeyboard: false)
                     }
 
                     testSection
@@ -80,6 +95,7 @@ struct ProviderEditView: View {
                 .padding(.top, 10)
             }
             .background(Color.dsPage.ignoresSafeArea())
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(existing == nil ? "添加片源" : "编辑片源")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -169,7 +185,8 @@ struct ProviderEditView: View {
         }
     }
 
-    private func fieldRow(title: String, text: Binding<String>, placeholder: String, secure: Bool) -> some View {
+    private func fieldRow(title: String, text: Binding<String>, placeholder: String, secure: Bool,
+                          urlKeyboard: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.dsInk2)
             GlassSurface(shape: .rounded(12), interactive: true) {
@@ -183,6 +200,7 @@ struct ProviderEditView: View {
                 .foregroundStyle(.dsInk)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .keyboardType(urlKeyboard ? .URL : .default)
             }
             .frame(height: 44)
             .padding(.horizontal, 12)

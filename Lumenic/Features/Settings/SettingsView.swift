@@ -7,6 +7,9 @@ struct SettingsView: View {
     @State private var showAdd = false
     @State private var showSecrets = false
     @State private var engineOverride = UserDefaults.standard.string(forKey: "engine.override") ?? "auto"
+    // 密钥状态缓存：Keychain 是同步 IO，不在 body 渲染路径反复读
+    @State private var dandanConfigured = false
+    @State private var tmdbConfigured = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -36,9 +39,15 @@ struct SettingsView: View {
         .sheet(isPresented: $showAdd) {
             ProviderEditView(existing: nil)
         }
-        .sheet(isPresented: $showSecrets) {
+        .sheet(isPresented: $showSecrets, onDismiss: { refreshSecretStatus() }) {
             SecretsEditView()
         }
+        .onAppear { refreshSecretStatus() }
+    }
+
+    private func refreshSecretStatus() {
+        dandanConfigured = DandanplayConfig.isConfigured
+        tmdbConfigured = env.tmdb.isConfigured
     }
 
     // MARK: 账号与同步（iCloud 真开关：进度/收藏/跳过标记 CloudKit 同步）
@@ -116,7 +125,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("弹弹play API")
                                     .font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
-                                Text(DandanplayConfig.isConfigured
+                                Text(dandanConfigured
                                      ? "已配置 AppId：\(DandanplayConfig.appId)"
                                      : "未配置 · 弹弹play 开放平台申请")
                                     .font(.dsCaption).foregroundStyle(.dsInk2)
@@ -136,8 +145,8 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("TMDB API Key")
                                     .font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
-                                Text(env.tmdb.isConfigured ? "已配置 · 标题归一化与海报刮削生效"
-                                                           : "未配置 · 聚合搜索退化为标题归一")
+                                Text(tmdbConfigured ? "已配置 · 标题归一化与海报刮削生效"
+                                                    : "未配置 · 聚合搜索退化为标题归一")
                                     .font(.dsCaption).foregroundStyle(.dsInk2)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -269,56 +278,100 @@ private struct SyncSectionView: View {
     }
 }
 
-// MARK: - 服务密钥编辑（弹弹play / TMDB；保存进 Keychain）
+// MARK: - 服务密钥编辑（弹弹play / TMDB；保存进 Keychain；玻璃风格与片源编辑页一致）
 
 struct SecretsEditView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var dandanAppId = DandanplayConfig.appId
     @State private var dandanSecret = DandanplayConfig.appSecret
     @State private var tmdbKey = ""    // 只显示占位，不回显真实值
+    @State private var tmdbConfigured = false
     @State private var saved = false
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section("弹弹play（弹幕自动匹配签名）") {
-                    TextField("AppId", text: $dandanAppId)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
-                    SecureField("AppSecret", text: $dandanSecret)
-                }
-                Section("TMDB（标题归一化 + 海报刮削）") {
-                    if TMDBService().isConfigured {
-                        Label("已配置，填入新值可覆盖", systemImage: "checkmark.circle")
-                            .font(.dsCaption).foregroundStyle(.green)
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionLabel("弹弹play · 弹幕自动匹配签名")
+                        fieldRow(title: "AppId", text: $dandanAppId,
+                                 placeholder: "app.dandanplay.net 开放平台 AppId", secure: false)
+                        fieldRow(title: "AppSecret", text: $dandanSecret,
+                                 placeholder: "开放平台 AppSecret", secure: true)
                     }
-                    TextField("API Key（v3 auth）", text: $tmdbKey)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
-                }
-                Section {
-                    Button("保存到 Keychain") {
-                        DandanplayConfig.save(appId: dandanAppId, secret: dandanSecret)
-                        if !tmdbKey.isEmpty {
-                            TMDBService().saveApiKey(tmdbKey)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionLabel("TMDB · 标题归一化 + 海报刮削")
+                        if tmdbConfigured {
+                            Label("已配置，填入新值可覆盖", systemImage: "checkmark.circle.fill")
+                                .font(.dsCaption).foregroundStyle(.green)
                         }
-                        saved = true
+                        fieldRow(title: "API Key（v3 auth）", text: $tmdbKey,
+                                 placeholder: tmdbConfigured ? "留空保持现有配置" : "themoviedb.org 获取", secure: true)
                     }
+
                     if saved {
-                        Label("已保存", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green).font(.dsCaption)
+                        Label("已保存到 Keychain", systemImage: "checkmark.circle.fill")
+                            .font(.dsCaption).foregroundStyle(.green)
+                            .padding(.horizontal, 4)
                     }
-                }
-                Section("说明") {
+
                     Text("密钥保存在 iOS Keychain，不会写入 UserDefaults 或代码仓库。弹弹play 在 app.dandanplay.net 开放平台注册申请；TMDB Key 在 themoviedb.org 设置页 API 获取。")
                         .font(.dsCaption).foregroundStyle(.dsInk2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                    Color.clear.frame(height: 30)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
             }
+            .background(Color.dsPage.ignoresSafeArea())
             .navigationTitle("服务密钥")
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("完成") { dismiss() }
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { save() }
                 }
             }
+            .onAppear { tmdbConfigured = TMDBService().isConfigured }
+        }
+    }
+
+    private func save() {
+        DandanplayConfig.save(appId: dandanAppId, secret: dandanSecret)
+        if !tmdbKey.isEmpty {
+            TMDBService().saveApiKey(tmdbKey)
+            tmdbConfigured = true
+            tmdbKey = ""
+        }
+        saved = true
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text).font(.system(size: 14, weight: .semibold)).foregroundStyle(.dsInk2)
+    }
+
+    private func fieldRow(title: String, text: Binding<String>, placeholder: String, secure: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.dsInk2)
+            GlassSurface(shape: .rounded(12), interactive: true) {
+                Group {
+                    if secure {
+                        SecureField(placeholder, text: text)
+                    } else {
+                        TextField(placeholder, text: text)
+                    }
+                }
+                .foregroundStyle(.dsInk)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            }
+            .frame(height: 44)
+            .padding(.horizontal, 12)
         }
     }
 }
