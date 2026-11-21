@@ -27,6 +27,7 @@ jobs:
 
       - name: Build
         run: |
+          set -o pipefail
           xcodebuild build \
             -scheme Luplay \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
@@ -56,6 +57,7 @@ jobs:
 
       - name: Archive (Release, unsigned)
         run: |
+          set -o pipefail
           xcodebuild archive \
             -scheme Luplay \
             -configuration Release \
@@ -63,6 +65,7 @@ jobs:
             -archivePath build/Luplay.xcarchive \
             MARKETING_VERSION=1.0 \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \
             | xcpretty || exit 1
