@@ -37,7 +37,8 @@ jobs:
 
       - name: Errors (on failure)
         if: failure()
-        run: grep -E "error:" build_debug.log | head -60 || echo "(no error: lines)"
+        run: |
+          grep -E "error:" build_debug.log | head -60 || echo "(no error: lines)"
 
   # 出包：Release Archive → 未签名 IPA（TrollStore / Sideloadly / AltStore 侧载重签）
   ipa:
@@ -76,7 +77,8 @@ jobs:
 
       - name: Errors (on failure)
         if: failure()
-        run: grep -E "error:" build_archive.log | head -60 || echo "(no error: lines)"
+        run: |
+          grep -E "error:" build_archive.log | head -60 || echo "(no error: lines)"
 
       - name: Package IPA
         run: |
