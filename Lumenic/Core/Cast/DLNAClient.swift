@@ -12,6 +12,12 @@ final class DLNAClient {
         let usn: String
     }
 
+    /// 设备 SOAP 端点（AVTransport 播放控制 / RenderingControl 音量）
+    struct Endpoints {
+        let avTransport: URL
+        let renderingControl: URL?
+    }
+
     // MARK: SSDP 发现
 
     /// M-SEARCH 局域网内 DLNA 渲染设备（默认 4 秒收集窗口）
@@ -58,18 +64,20 @@ final class DLNAClient {
 
     // MARK: 设备描述 XML
 
-    /// 拉取设备描述，返回 friendlyName 与 AVTransport controlURL（相对路径已按 location 解析）
-    func describe(device: DiscoveredDevice) async -> (name: String, controlURL: URL)? {
+    /// 拉取设备描述，返回 friendlyName 与 AVTransport/RenderingControl controlURL（相对路径已按 location 解析）
+    func describe(device: DiscoveredDevice) async -> (name: String, endpoints: Endpoints)? {
         guard let (data, resp) = try? await URLSession.shared.data(from: device.location),
               let http = resp as? HTTPURLResponse, http.statusCode == 200,
               let xml = String(data: data, encoding: .utf8)
         else { return nil }
         let name = Self.tagValue("friendlyName", in: xml) ?? "未知设备"
-        guard let rawControl = Self.avTransportControlURL(in: xml) else { return nil }
-        let control = URL(string: rawControl, relativeTo: device.location)?.absoluteURL
-            ?? URL(string: rawControl)
-        guard let control else { return nil }
-        return (name, control)
+        guard let rawAV = Self.controlURL(for: "AVTransport", in: xml), !rawAV.isEmpty else { return nil }
+        let av = URL(string: rawAV, relativeTo: device.location)?.absoluteURL ?? URL(string: rawAV)
+        guard let av else { return nil }
+        let rc: URL? = Self.controlURL(for: "RenderingControl", in: xml).flatMap {
+            URL(string: $0, relativeTo: device.location)?.absoluteURL ?? URL(string: $0)
+        }
+        return (name, Endpoints(avTransport: av, renderingControl: rc))
     }
 
     // MARK: SOAP 控制（AVTransport:1）
@@ -98,21 +106,96 @@ final class DLNAClient {
         try await soap("Stop", controlURL: controlURL, body: "<InstanceID>0</InstanceID>")
     }
 
-    private func soap(_ action: String, controlURL: URL, body: String) async throws {
+    // MARK: 远程控制（AVTransport + RenderingControl，投屏遥控用）
+
+    func pause(controlURL: URL) async throws {
+        try await soap("Pause", controlURL: controlURL, body: "<InstanceID>0</InstanceID>")
+    }
+
+    func resume(controlURL: URL) async throws {
+        try await soap("Play", controlURL: controlURL, body: "<InstanceID>0</InstanceID><Speed>1</Speed>")
+    }
+
+    /// 跳转（REL_TIME，HH:MM:SS）
+    func seek(to seconds: Double, controlURL: URL) async throws {
+        let t = Self.timeString(seconds)
+        try await soap("Seek", controlURL: controlURL, body: """
+        <InstanceID>0</InstanceID><Unit>REL_TIME</Unit><Target>\(t)</Target>
+        """)
+    }
+
+    /// 设置音量（0-100，RenderingControl）
+    func setVolume(_ percent: Int, renderingControlURL: URL) async throws {
+        try await soap("SetVolume", service: "RenderingControl", controlURL: renderingControlURL, body: """
+        <InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>\(percent)</DesiredVolume>
+        """)
+    }
+
+    /// 查询音量（0-100），失败返回 nil
+    func volume(renderingControlURL: URL) async -> Int? {
+        guard let data = try? await soapResponse("GetVolume", service: "RenderingControl",
+                                                 controlURL: renderingControlURL,
+                                                 body: "<InstanceID>0</InstanceID><Channel>Master</Channel>"),
+              let xml = String(data: data, encoding: .utf8),
+              let raw = Self.tagValue("CurrentVolume", in: xml)
+        else { return nil }
+        return Int(raw.trimmingCharacters(in: CharacterSet.decimalDigits.inverted)) ?? nil
+    }
+
+    /// 查询播放位置与时长（秒）；设备不支持时对应值为 0
+    func positionInfo(controlURL: URL) async -> (position: Double, duration: Double, isPlaying: Bool)? {
+        guard let posData = try? await soapResponse("GetPositionInfo", controlURL: controlURL,
+                                                    body: "<InstanceID>0</InstanceID>"),
+              let posXML = String(data: posData, encoding: .utf8)
+        else { return nil }
+        let position = Self.seconds(Self.tagValue("RelTime", in: posXML)) ?? 0
+        let duration = Self.seconds(Self.tagValue("TrackDuration", in: posXML)) ?? 0
+        var isPlaying = false
+        if let stateData = try? await soapResponse("GetTransportInfo", controlURL: controlURL,
+                                                   body: "<InstanceID>0</InstanceID>"),
+           let stateXML = String(data: stateData, encoding: .utf8),
+           let state = Self.tagValue("CurrentTransportState", in: stateXML) {
+            isPlaying = state.uppercased().contains("PLAYING")
+        }
+        return (position, duration, isPlaying)
+    }
+
+    private func soap(_ action: String, controlURL: URL, service: String = "AVTransport", body: String) async throws {
+        _ = try await soapResponse(action, controlURL: controlURL, service: service, body: body)
+    }
+
+    private func soapResponse(_ action: String, controlURL: URL, service: String = "AVTransport", body: String) async throws -> Data {
         var request = URLRequest(url: controlURL)
         request.httpMethod = "POST"
         request.setValue("text/xml; charset=\"utf-8\"", forHTTPHeaderField: "Content-Type")
-        request.setValue("\"urn:schemas-upnp-org:service:AVTransport:1#\(action)\"", forHTTPHeaderField: "SOAPACTION")
+        request.setValue("\"urn:schemas-upnp-org:service:\(service):1#\(action)\"", forHTTPHeaderField: "SOAPACTION")
         let envelope = """
         <?xml version="1.0" encoding="utf-8"?>
         <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-        <s:Body><u:\(action) xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">\(body)</u:\(action)></s:Body>
+        <s:Body><u:\(action) xmlns:u="urn:schemas-upnp-org:service:\(service):1">\(body)</u:\(action)></s:Body>
         </s:Envelope>
         """
         request.httpBody = envelope.data(using: .utf8)
-        let (_, resp) = try await URLSession.shared.data(for: request)
+        let (data, resp) = try await URLSession.shared.data(for: request)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(code) else { throw CastError.deviceRejected(code: code) }
+        return data
+    }
+
+    /// 秒 → "H:MM:SS"（UPnP REL_TIME 格式）
+    private static func timeString(_ seconds: Double) -> String {
+        let s = max(0, Int(seconds))
+        return String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
+    }
+
+    /// UPnP 时间字符串 → 秒（"1:23:45" / "NOT_IMPLEMENTED" → nil）
+    private static func seconds(_ raw: String?) -> Double? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let parts = raw.trimmingCharacters(in: .whitespaces).split(separator: ":")
+        guard parts.count == 3,
+              let h = Double(parts[0]), let m = Double(parts[1]), let s = Double(parts[2])
+        else { return nil }
+        return h * 3600 + m * 60 + s
     }
 
     enum CastError: Error { case deviceRejected(code: Int) }

@@ -93,14 +93,29 @@ final class CastV2Client {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: - CastV2 会话
+    // MARK: CastV2 会话
+
+    struct MediaStatus {
+        let playerState: String   // PLAYING / PAUSED / IDLE
+        let currentTime: Double
+        let duration: Double
+        let mediaSessionId: Int
+    }
 
     private var conn: NWConnection?
     private var transportID: String?
     private var requestID = 0
     private var heartbeatTask: Task<Void, Never>?
     private var rxBuffer = Data()
-    private let lock = NSLock()   // 保护 transportID / requestID / rxBuffer
+    private var lastStatus: MediaStatus?
+    private let lock = NSLock()   // 保护 transportID / requestID / rxBuffer / lastStatus
+
+    /// 最近一次 MEDIA_STATUS 快照（遥控面板轮询用）
+    func statusSnapshot() -> MediaStatus? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastStatus
+    }
 
     enum CastError: Error, LocalizedError {
         case connectFailed
@@ -167,6 +182,37 @@ final class CastV2Client {
                            payload: #"{"type":"PING"}"#)
             }
         }
+    }
+
+    // MARK: 远程控制（投屏遥控用）
+
+    private func mediaCommand(_ type: String, extra: [String: Any] = [:]) {
+        guard let tid = currentTransportID() else { return }
+        var payload: [String: Any] = ["type": type, "requestId": nextRequestID()]
+        if let mid = statusSnapshot()?.mediaSessionId, mid > 0 { payload["mediaSessionId"] = mid }
+        payload.merge(extra) { _, new in new }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        send(namespace: "urn:x-cast:com.google.cast.media",
+             destination: tid, payload: String(decoding: data, as: UTF8.self))
+    }
+
+    func pause() { mediaCommand("PAUSE") }
+    func resume() { mediaCommand("PLAY") }
+
+    func seek(to seconds: Double) {
+        mediaCommand("SEEK", extra: ["currentTime": seconds])
+    }
+
+    /// 音量 0-1（receiver 通道 SET_VOLUME）
+    func setVolume(level: Double) {
+        let payload: [String: Any] = [
+            "type": "SET_VOLUME",
+            "requestId": nextRequestID(),
+            "volume": ["level": min(max(level, 0), 1)],
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        send(namespace: "urn:x-cast:com.google.cast.receiver",
+             payload: String(decoding: data, as: UTF8.self))
     }
 
     /// 断开：STOP 媒体 + CLOSE 虚拟连接 + 关 socket
@@ -257,13 +303,18 @@ final class CastV2Client {
         return messages
     }
 
-    /// 接收消息处理：RECEIVER_STATUS → transportID；心跳 PONG 忽略
     private func handle(_ message: (namespace: String, payload: String)) {
         switch message.namespace {
         case "urn:x-cast:com.google.cast.receiver":
             if let tid = Self.transportID(in: message.payload) {
                 lock.lock()
                 transportID = tid
+                lock.unlock()
+            }
+        case "urn:x-cast:com.google.cast.media":
+            if let status = Self.mediaStatus(in: message.payload) {
+                lock.lock()
+                lastStatus = status
                 lock.unlock()
             }
         default:
@@ -395,6 +446,22 @@ final class CastV2Client {
               let apps = status["applications"] as? [[String: Any]]
         else { return nil }
         return apps.first?["transportId"] as? String
+    }
+
+    /// MEDIA_STATUS → 遥控面板状态（首条 status；duration 在 media 节点里）
+    private static func mediaStatus(in payload: String) -> MediaStatus? {
+        guard let obj = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
+              obj["type"] as? String == "MEDIA_STATUS",
+              let list = obj["status"] as? [[String: Any]],
+              let first = list.first
+        else { return nil }
+        let media = first["media"] as? [String: Any]
+        return MediaStatus(
+            playerState: first["playerState"] as? String ?? "IDLE",
+            currentTime: first["currentTime"] as? Double ?? 0,
+            duration: (media?["duration"] as? Double) ?? 0,
+            mediaSessionId: first["mediaSessionId"] as? Int ?? 0
+        )
     }
 
     // MARK: - SSDP socket（与 DLNAClient 同款 BSD 实现）

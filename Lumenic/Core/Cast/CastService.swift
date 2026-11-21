@@ -33,13 +33,22 @@ final class CastService: CastServiceProtocol, ObservableObject {
     @Published var isScanning = false
     @Published private(set) var connectedDevice: CastDevice?
     @Published private(set) var lastError: String?
+    /// 远端播放状态（遥控面板：进度/时长/播放中），轮询刷新
+    @Published private(set) var remoteStatus: RemoteStatus?
+
+    struct RemoteStatus {
+        let position: Double
+        let duration: Double
+        let isPlaying: Bool
+    }
 
     private let dlna = DLNAClient()
-    /// deviceId → AVTransport controlURL
-    private var controlURLs: [String: URL] = [:]
+    /// deviceId → SOAP 端点（AVTransport + RenderingControl）
+    private var endpoints: [String: DLNAClient.Endpoints] = [:]
     private let castv2 = CastV2Client()
     /// deviceId → Chromecast IP（TLS 8009 直连）
     private var chromecastIPs: [String: String] = [:]
+    private var pollTask: Task<Void, Never>?
 
     func scan() async -> [CastDevice] {
         isScanning = true
@@ -52,7 +61,7 @@ final class CastService: CastServiceProtocol, ObservableObject {
         var result: [CastDevice] = []
         for device in dlnaList {
             guard let described = await dlna.describe(device: device) else { continue }
-            controlURLs[device.usn] = described.controlURL
+            endpoints[device.usn] = described.endpoints
             result.append(CastDevice(id: device.usn, name: described.name, kind: .dlna))
         }
         for device in ccList {
@@ -68,10 +77,10 @@ final class CastService: CastServiceProtocol, ObservableObject {
         do {
             switch device.kind {
             case .dlna:
-                guard let control = controlURLs[device.id] else {
+                guard let ep = endpoints[device.id] else {
                     throw DLNAClient.CastError.deviceRejected(code: 0)  // 设备信息过期，需重新扫描
                 }
-                try await dlna.cast(url: stream.url, title: title, controlURL: control)
+                try await dlna.cast(url: stream.url, title: title, controlURL: ep.avTransport)
             case .chromecast:
                 guard let ip = chromecastIPs[device.id] else {
                     throw CastV2Client.CastError.notConnected
@@ -82,18 +91,127 @@ final class CastService: CastServiceProtocol, ObservableObject {
             }
             connectedDevice = device
             lastError = nil
+            startPolling(device)
         } catch {
             lastError = "推流失败：\(error)"
             throw error
         }
     }
 
+    // MARK: 远程控制（面板遥控区）
+
+    func pauseRemote() {
+        guard let device = connectedDevice else { return }
+        switch device.kind {
+        case .dlna:
+            if let ep = endpoints[device.id] { Task { try? await dlna.pause(controlURL: ep.avTransport) } }
+        case .chromecast:
+            castv2.pause()
+        case .airplay:
+            break
+        }
+    }
+
+    func playRemote() {
+        guard let device = connectedDevice else { return }
+        switch device.kind {
+        case .dlna:
+            if let ep = endpoints[device.id] { Task { try? await dlna.resume(controlURL: ep.avTransport) } }
+        case .chromecast:
+            castv2.resume()
+        case .airplay:
+            break
+        }
+    }
+
+    func seekRemote(to seconds: Double) {
+        guard let device = connectedDevice else { return }
+        switch device.kind {
+        case .dlna:
+            if let ep = endpoints[device.id] {
+                Task { try? await dlna.seek(to: seconds, controlURL: ep.avTransport) }
+            }
+        case .chromecast:
+            castv2.seek(to: seconds)
+        case .airplay:
+            break
+        }
+    }
+
+    /// 音量 0-100
+    func setRemoteVolume(_ percent: Double) {
+        guard let device = connectedDevice else { return }
+        switch device.kind {
+        case .dlna:
+            if let ep = endpoints[device.id], let rc = ep.renderingControl {
+                Task { try? await dlna.setVolume(Int(percent.rounded()), renderingControlURL: rc) }
+            }
+        case .chromecast:
+            castv2.setVolume(level: percent / 100)
+        case .airplay:
+            break
+        }
+    }
+
+    /// 初始音量（0-100），用于遥控滑杆初值
+    func remoteVolume() async -> Double? {
+        guard let device = connectedDevice else { return nil }
+        switch device.kind {
+        case .dlna:
+            if let ep = endpoints[device.id], let rc = ep.renderingControl,
+               let v = await dlna.volume(renderingControlURL: rc) {
+                return Double(v)
+            }
+            return nil
+        case .chromecast:
+            return nil   // Cast 音量回读未实现，滑杆用默认值
+        case .airplay:
+            return nil
+        }
+    }
+
+    // MARK: 远端状态轮询（2s 一次；连接断开自动停止）
+
+    private func startPolling(_ device: CastDevice) {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            while !Task.isCancelled, let self,
+                  self.connectedDevice?.id == device.id {
+                let status: RemoteStatus?
+                switch device.kind {
+                case .dlna:
+                    if let ep = self.endpoints[device.id],
+                       let info = await self.dlna.positionInfo(controlURL: ep.avTransport) {
+                        status = RemoteStatus(position: info.position, duration: info.duration,
+                                              isPlaying: info.isPlaying)
+                    } else {
+                        status = nil
+                    }
+                case .chromecast:
+                    if let s = self.castv2.statusSnapshot() {
+                        status = RemoteStatus(position: s.currentTime, duration: s.duration,
+                                              isPlaying: s.playerState == "PLAYING")
+                    } else {
+                        status = nil
+                    }
+                case .airplay:
+                    status = nil
+                }
+                if let status { self.remoteStatus = status }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
     func disconnect() async {
+        pollTask?.cancel()
+        pollTask = nil
+        remoteStatus = nil
         if let device = connectedDevice {
             switch device.kind {
             case .dlna:
-                if let control = controlURLs[device.id] {
-                    try? await dlna.stop(controlURL: control)
+                if let ep = endpoints[device.id] {
+                    try? await dlna.stop(controlURL: ep.avTransport)
                 }
             case .chromecast:
                 castv2.stopSession()

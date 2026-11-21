@@ -48,7 +48,7 @@ struct PlayerContainerView: View {
         request.options.first { $0.id == selectedOptionID } ?? request.bestOption
     }
 
-    enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多", debug = "调试" }
+    enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多", speed = "倍速", debug = "调试" }
 
     var body: some View {
         ZStack {
@@ -304,8 +304,7 @@ struct PlayerContainerView: View {
 
     private var speedPill: some View {
         Button {
-            let next = session.rate == 1.0 ? 1.5 : (session.rate == 1.5 ? 2.0 : 1.0)
-            session.setRate(next)
+            withAnimation(.dsEaseOut) { activePanel = .speed }
         } label: {
             Text("\(String(format: "%g", session.rate))×")
                 .font(.system(size: 12, weight: .bold))
@@ -413,6 +412,9 @@ struct PlayerContainerView: View {
             case .subtitle:
                 SubtitlePanel(session: session,
                               onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
+            case .speed:
+                SpeedPanel(session: session,
+                           onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             }
         }
     }
