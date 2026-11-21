@@ -51,12 +51,13 @@ struct HomeView: View {
                         .font(.system(size: 13.5, weight: .bold))
                         .foregroundStyle(.dsInk)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     Text("\(env.providers.count) 源")
                         .font(.dsCaption)
                         .foregroundStyle(.dsInk2)
                 }
             }
-            .frame(maxWidth: 190, height: 40)
+            .frame(maxWidth: 230, height: 40)
         }
         .padding(.horizontal, 16)
         .padding(.top, 6)
@@ -75,9 +76,11 @@ struct HomeView: View {
                                 .font(.system(size: 34, weight: .bold))
                                 .foregroundStyle(.white)
                                 .shadow(color: .black.opacity(0.6), radius: 12)
+                                .lineLimit(2)
                             Text(m.subtitle)
                                 .font(.dsCaption)
                                 .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
                         }
                         .padding(22)
                     }

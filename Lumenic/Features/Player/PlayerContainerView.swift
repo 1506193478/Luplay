@@ -108,7 +108,10 @@ struct PlayerContainerView: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(request.title).font(.system(size: 16, weight: .bold)).foregroundStyle(.dsInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 Text(request.episodeLabel).font(.dsCaption).foregroundStyle(.dsInk2)
+                    .lineLimit(1)
                 HStack(spacing: 5) {
                     if let info = currentOption?.info {
                         Text(info.hdr).badgeStyle(highlight: info.hdr != "SDR")
@@ -141,11 +144,11 @@ struct PlayerContainerView: View {
         return String(format: "BUF %.1fs", buf)
     }
 
-    // MARK: 底部控制条
+    // MARK: 底部控制条（两行布局：窄屏不再挤压裁切）
     private var controlBar: some View {
         VStack(spacing: 10) {
             slider
-            HStack(spacing: 26) {
+            HStack(spacing: 18) {
                 Button {
                     session.isPlaying ? session.pause() : session.play()
                 } label: {
@@ -155,9 +158,15 @@ struct PlayerContainerView: View {
                 Button { session.seek(to: max(0, (session.tick?.position ?? 0) - 10)) } label: {
                     Image(systemName: "gobackward.10").font(.system(size: 17))
                 }
+                Spacer()
                 speedPill
                 enginePill
-                Spacer()
+            }
+            .foregroundStyle(.dsInk)
+            .padding(.horizontal, 18)
+
+            // 面板行：均匀分布，图标不再互相挤压
+            HStack(spacing: 0) {
                 panelButton(.cast, icon: "rectangle.on.rectangle")
                 pipButton
                 panelButton(.sources, icon: "square.stack.3d.up")
@@ -179,6 +188,7 @@ struct PlayerContainerView: View {
         }
         .disabled(!(session.engine.capabilities.contains(.pip)))
         .opacity(session.engine.capabilities.contains(.pip) ? 1 : 0.35)
+        .frame(maxWidth: .infinity)
     }
 
     private var slider: some View {
@@ -244,30 +254,41 @@ struct PlayerContainerView: View {
         Button { withAnimation(.dsEaseOut) { activePanel = p } } label: {
             Image(systemName: icon).font(.system(size: 17))
         }
+        .frame(maxWidth: .infinity)   // 面板行均匀分布，图标永不裁切
     }
 
-    // MARK: 右侧工具簇
+    // MARK: 右侧工具簇（真实功能；锚定在控制条上方，不再用硬偏移）
     private var toolCluster: some View {
         VStack(spacing: 14) {
-            toolIcon("text.bubble")
-            toolIcon("lock")
-            toolIcon("rectangle.on.rectangle")
-            toolIcon("ellipsis")
+            toolIcon("text.bubble") {
+                withAnimation(.dsEaseOut) { activePanel = .danmaku }
+            }
+            toolIcon("rectangle.inset.filled.on.rectangle.filled",
+                     enabled: session.engine.capabilities.contains(.pip)) {
+                session.togglePiP()
+            }
+            toolIcon("ellipsis") {
+                withAnimation(.dsEaseOut) { activePanel = .more }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.trailing, 18)
-        .offset(y: -120)
+        .padding(.bottom, 150)   // 悬在控制条上方，随控件条一起显隐
         .opacity(controlsVisible ? 1 : 0)
         .animation(.dsSpring, value: controlsVisible)
     }
 
-    private func toolIcon(_ name: String) -> some View {
-        GlassSurface(shape: .capsule, interactive: true) {
-            Image(systemName: name)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.dsInk)
-                .frame(width: 42, height: 42)
+    private func toolIcon(_ name: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            GlassSurface(shape: .capsule, interactive: true) {
+                Image(systemName: name)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.dsInk)
+                    .frame(width: 42, height: 42)
+            }
         }
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
     }
 
     // MARK: 玻璃面板层

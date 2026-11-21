@@ -62,6 +62,7 @@ struct SettingsView: View {
                                      ? "已配置 AppId：\(DandanplayConfig.appId)"
                                      : "未配置 · 弹弹play 开放平台申请")
                                     .font(.dsCaption).foregroundStyle(.dsInk2)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.dsInk3)
@@ -80,6 +81,7 @@ struct SettingsView: View {
                                 Text(env.tmdb.isConfigured ? "已配置 · 标题归一化与海报刮削生效"
                                                            : "未配置 · 聚合搜索退化为标题归一")
                                     .font(.dsCaption).foregroundStyle(.dsInk2)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.dsInk3)
@@ -165,6 +167,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.1).font(.system(size: 15, weight: .medium)).foregroundStyle(.dsInk)
                                 Text(item.2).font(.dsCaption).foregroundStyle(.dsInk2)
+                                    .fixedSize(horizontal: false, vertical: true)  // 副标题完整显示不截断
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.dsInk3)
