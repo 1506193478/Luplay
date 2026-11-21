@@ -27,7 +27,8 @@ targets:
         SWIFT_VERSION: 5.10
         TARGETED_DEVICE_FAMILY: "1"          # 仅 iPhone
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        # 全量声明支持方向，实际运行时由 AppDelegate 按播放页状态动态收紧（见 OrientationGate.swift）
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_x86_64: ""
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic

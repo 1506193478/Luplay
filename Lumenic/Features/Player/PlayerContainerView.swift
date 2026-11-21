@@ -58,6 +58,8 @@ struct PlayerContainerView: View {
         .onTapGesture { withAnimation(.dsSpring) { controlsVisible.toggle() } }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        // 横屏闸门：仅播放页放行横屏（物理朝向跟随）；关闭播放器自动旋回竖屏
+        .onAppear { OrientationGate.shared.allowLandscape = true }
         .task {
             // 重绑真实数据库（init 时 env 不可用只能用内存库）
             session.useDatabase(env.database)
@@ -93,7 +95,10 @@ struct PlayerContainerView: View {
         .onChange(of: controlsVisible) { _, visible in
             danmakuEngine.setSuppressed(visible ? 1 : 0)
         }
-        .onDisappear { session.close() }
+        .onDisappear {
+            OrientationGate.shared.allowLandscape = false   // 关闸 → 系统旋回竖屏
+            session.close()
+        }
     }
 
     // MARK: 视频层

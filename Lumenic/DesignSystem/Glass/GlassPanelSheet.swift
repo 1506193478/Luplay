@@ -12,28 +12,31 @@ struct GlassPanelSheet<Content: View>: View {
     @State private var appeared = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // 背景压暗（点击关闭）
-            Color.black.opacity(appeared ? 0.35 : 0)
-                .ignoresSafeArea()
-                .onTapGesture(perform: onClose)
+        GeometryReader { geo in
+            ZStack(alignment: .bottom) {
+                // 背景压暗（点击关闭）
+                Color.black.opacity(appeared ? 0.35 : 0)
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: onClose)
 
-            VStack(spacing: 0) {
-                grabber
-                header
-                Divider().overlay(Color.dsGlassBorder)
-                content()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(maxHeight: 560)
-            .background(
-                GlassSimulatorBackground(
-                    shape: AnyShape(erasing: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)),
-                    tint: .dsGlassFill
+                VStack(spacing: 0) {
+                    grabber
+                    header
+                    Divider().overlay(Color.dsGlassBorder)
+                    content()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .frame(maxWidth: .infinity)
+                // 高度上限取 min(560, 可用高度 92%)：横屏（高约 390pt）不再顶出屏幕
+                .frame(maxHeight: min(560, geo.size.height * 0.92))
+                .background(
+                    GlassSimulatorBackground(
+                        shape: AnyShape(erasing: UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24)),
+                        tint: .dsGlassFill
+                    )
                 )
-            )
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+            }
         }
         .ignoresSafeArea(.container, edges: .bottom)
         .onAppear {
