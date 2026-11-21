@@ -126,7 +126,7 @@ struct CastPanel: View {
                 Text(device.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.dsInk)
                     .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
-                Text(isConnected ? "已连接" : "DLNA")
+                Text(isConnected ? "已连接" : device.kindLabel)
                     .font(.dsCaption).foregroundStyle(isConnected ? Color.dsAccent : Color.dsInk2)
             }
             .padding(14)

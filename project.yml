@@ -39,6 +39,7 @@ targets:
         UIBackgroundModes: [audio]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true      # 局域网片源/自建服务器 http
+        NSLocalNetworkUsageDescription: 用于发现同一局域网内的投屏设备（DLNA / Chromecast）
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
     entitlements:
