@@ -15,6 +15,7 @@ struct PlayerContainerView: View {
     /// 当前生效的播放请求（切集时整体重建，进度按集落盘）
     @State private var activeRequest: PlayRequest
     @State private var switchingEpisode = false
+    @State private var switchingSource = false
 
     /// 浮窗尺寸（16:9）
     static let miniWindowSize = CGSize(width: 168, height: 94)
@@ -264,6 +265,7 @@ struct PlayerContainerView: View {
         .padding(.horizontal, 18)
         .padding(.top, 14)
         .opacity(controlsVisible ? 1 : 0)
+        .offset(y: controlsVisible ? 0 : -18)
         .animation(.dsSpring, value: controlsVisible)
     }
 
@@ -311,6 +313,7 @@ struct PlayerContainerView: View {
             .padding(.bottom, 26)
         }
         .opacity(controlsVisible ? 1 : 0)
+        .offset(y: controlsVisible ? 0 : 28)
         .animation(.dsSpring, value: controlsVisible)
     }
 
@@ -332,6 +335,7 @@ struct PlayerContainerView: View {
     /// 收起为浮窗（mpv 小窗）
     private func enterMini() {
         controlsVisible = true
+        locked = false   // 浮窗模式无锁屏态，展开后控件直接可用
         withAnimation(.dsSpring) { mini = true }
     }
 
@@ -541,11 +545,14 @@ struct PlayerContainerView: View {
             Text(timeString(position)).font(.system(size: 11, design: .monospaced)).foregroundStyle(.dsInk)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.22)).frame(height: 3)
-                    Capsule().fill(.white).frame(width: geo.size.width * fraction, height: 3)
-                    Circle().fill(.white).frame(width: 12, height: 12)
-                        .offset(x: geo.size.width * fraction - 6)
+                    Capsule().fill(.white.opacity(0.22)).frame(height: scrubbing ? 6 : 3)
+                    Capsule().fill(.white).frame(width: geo.size.width * fraction,
+                                                height: scrubbing ? 6 : 3)
+                    Circle().fill(.white).frame(width: scrubbing ? 18 : 12, height: scrubbing ? 18 : 12)
+                        .offset(x: geo.size.width * fraction - (scrubbing ? 9 : 6))
+                        .shadow(color: .black.opacity(scrubbing ? 0.3 : 0), radius: scrubbing ? 4 : 0)
                 }
+                .animation(.dsSpring, value: scrubbing)
                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
                     scrubbing = true
                     controlsVisible = true
@@ -699,6 +706,7 @@ struct PlayerContainerView: View {
     /// 切换剧集：各片源按集序号并发取流 → switchMedia 同引擎重载（渲染上下文不重建），
     /// 旧集进度落盘、新集进度恢复；弹幕重匹配 + 片头片尾标记重载。
     private func switchEpisode(to index: Int) async {
+        guard !switchingEpisode else { return }   // 防重入：切集中重复触发直接忽略
         guard let titles = activeRequest.episodeTitles, titles.indices.contains(index),
               index != activeRequest.currentEpisodeIndex else { return }
         switchingEpisode = true
@@ -745,7 +753,9 @@ struct PlayerContainerView: View {
 
     /// 换源（进度保留，M4 来源对比；直链有时效的片源先刷新再切换）
     private func switchTo(_ option: StreamOption) async {
-        guard option.id != selectedOptionID else { return }
+        guard option.id != selectedOptionID, !switchingSource else { return }   // 防重入
+        switchingSource = true
+        defer { switchingSource = false }
         var info = option.info
         if let refresh = option.refresh, let fresh = try? await refresh() { info = fresh }
         await session.switchSource(to: PlayableItem(url: info.url, headers: info.headers,

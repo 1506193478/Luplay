@@ -35,12 +35,13 @@ final class CloudSyncService: ObservableObject {
     private let container = CKContainer.default()
     private var database: AppDatabase?
     private var debounceTask: Task<Void, Never>?
+    private var dataChangeObserver: NSObjectProtocol?   // 通知令牌，deinit 移除
 
     init() {
         // 本地数据变更（关播放器存进度/收藏/跳过标记）→ 2.5s 去抖自动同步
         // （同步过程中的拉取回写不触发，避免自激循环）
-        NotificationCenter.default.addObserver(forName: .luplayDataChanged,
-                                               object: nil, queue: .main) { [weak self] _ in
+        dataChangeObserver = NotificationCenter.default.addObserver(
+            forName: .luplayDataChanged, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.enabled, self.accountAvailable, !self.syncing else { return }
                 self.debounceTask?.cancel()
@@ -51,6 +52,13 @@ final class CloudSyncService: ObservableObject {
                 }
             }
         }
+    }
+
+    deinit {
+        if let dataChangeObserver {
+            NotificationCenter.default.removeObserver(dataChangeObserver)
+        }
+        debounceTask?.cancel()
     }
 
     func configure(database: AppDatabase) {

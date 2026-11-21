@@ -36,6 +36,14 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
+        // 锁屏遥控目标必须随引擎释放移除：目标闭包 weak 不泄漏内存，
+        // 但残留 target 会让换引擎/重开播放后的旧指令命中已死引擎
+        let center = MPRemoteCommandCenter.shared()
+        remoteCommandTargets.forEach {
+            center.playCommand.removeTarget($0)
+            center.pauseCommand.removeTarget($0)
+            center.changePlaybackPositionCommand.removeTarget($0)
+        }
     }
 
     // MARK: - 加载
@@ -168,13 +176,15 @@ final class AVPlayerEngine: NSObject, PlayerEngine {
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in self?.player.play(); return .success }
-        center.pauseCommand.addTarget { [weak self] _ in self?.player.pause(); return .success }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            guard let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            self?.seek(to: e.positionTime)
-            return .success
-        }
+        remoteCommandTargets = [
+            center.playCommand.addTarget { [weak self] _ in self?.player.play(); return .success },
+            center.pauseCommand.addTarget { [weak self] _ in self?.player.pause(); return .success },
+            center.changePlaybackPositionCommand.addTarget { [weak self] event in
+                guard let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+                self?.seek(to: e.positionTime)
+                return .success
+            },
+        ]
     }
 
     private func updateNowPlaying() {

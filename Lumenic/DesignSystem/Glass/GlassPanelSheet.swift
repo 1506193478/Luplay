@@ -10,12 +10,13 @@ struct GlassPanelSheet<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @State private var appeared = false
+    @State private var dragOffset: CGFloat = 0   // 下拉关闭手势偏移
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
                 // 背景压暗（点击关闭）
-                Color.black.opacity(appeared ? 0.35 : 0)
+                Color.black.opacity(appeared && dragOffset == 0 ? 0.35 : (appeared ? 0.15 : 0))
                     .ignoresSafeArea()
                     .onTapGesture(perform: onClose)
 
@@ -36,12 +37,33 @@ struct GlassPanelSheet<Content: View>: View {
                     )
                 )
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24))
+                // 下拉跟随，松手超阈值关闭（把手/标题区拖动，不干扰内容滚动）
+                .offset(y: max(0, dragOffset))
             }
         }
         .ignoresSafeArea(.container, edges: .bottom)
+        // 进出场：底部滑入/滑出（panelLayer 插拔时由 withAnimation 驱动）
+        .transition(.move(edge: .bottom).combined(with: .opacity))
         .onAppear {
             withAnimation(.dsEaseOut) { appeared = true }
         }
+    }
+
+    /// 下拉关闭手势：仅挂在把手+标题区，避免与面板内 ScrollView 冲突
+    private var dismissDrag: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { v in
+                guard v.translation.height > 0 else { return }
+                dragOffset = v.translation.height
+            }
+            .onEnded { v in
+                if v.translation.height > 120 || v.predictedEndTranslation.height > 260 {
+                    dragOffset = 0
+                    onClose()
+                } else {
+                    withAnimation(.dsSpring) { dragOffset = 0 }
+                }
+            }
     }
 
     private var grabber: some View {
@@ -50,6 +72,9 @@ struct GlassPanelSheet<Content: View>: View {
             .frame(width: 36, height: 5)
             .padding(.top, 10)
             .padding(.bottom, 4)
+            .frame(maxWidth: .infinity)   // 整条顶带都可下拉
+            .contentShape(Rectangle())
+            .gesture(dismissDrag)
     }
 
     private var header: some View {
@@ -78,6 +103,9 @@ struct GlassPanelSheet<Content: View>: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .background(Color.clear)
+        .contentShape(Rectangle())
+        .gesture(dismissDrag)
     }
 }
 
