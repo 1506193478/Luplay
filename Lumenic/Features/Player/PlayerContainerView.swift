@@ -3,10 +3,16 @@ import AVKit
 
 /// 播放器容器：全屏视频层 + 顶部信息条 + 底部控制条 + 右侧工具簇 + 玻璃面板。
 /// 视频输出与控制走 PlaybackSession；片源来自 PlayRequest（真实片源 / 演示流）。
+/// 支持浮窗模式（mini）：视频层缩为可拖动小窗，页面内容与 Tab 栏透传可用。
+/// 全屏/浮窗共用同一 EngineSurface 视图身份（mpv GL 渲染上下文不重建）。
 struct PlayerContainerView: View {
     let request: PlayRequest
-    @Environment(\.dismiss) private var dismiss
+    @Binding var mini: Bool
+    let onClose: () -> Void
     @EnvironmentObject private var env: AppEnvironment
+
+    /// 浮窗尺寸（16:9）
+    static let miniWindowSize = CGSize(width: 168, height: 94)
 
     @StateObject private var session: PlaybackSession
     @StateObject private var danmakuEngine = DanmakuEngine()
@@ -17,9 +23,13 @@ struct PlayerContainerView: View {
     @State private var selectedOptionID: String
     @State private var skipMarker: SkipMarker?
     @State private var autoSkipFired = false
+    @State private var miniDrag: CGSize = .zero   // 相对默认停靠点（右下）的拖动偏移
+    @State private var bounds: CGSize = .zero     // 容器安全区内尺寸（浮窗定位/钳制用）
 
-    init(request: PlayRequest) {
+    init(request: PlayRequest, mini: Binding<Bool>, onClose: @escaping () -> Void) {
         self.request = request
+        self._mini = mini
+        self.onClose = onClose
         // 内核自动选择（方案 §3.4）：按最佳片源信息实时推荐（设置页"默认内核"可覆盖）；mpv 不可用时回退
         let best = request.bestOption
         var kind = best.map { EngineSelector.recommend(container: $0.info.container,
@@ -42,24 +52,52 @@ struct PlayerContainerView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            videoLayer
+            // 背景：全屏模式黑底；浮窗模式透明且不拦截点击（透传页面与 Tab 栏）
+            Color.black
                 .ignoresSafeArea()
+                .opacity(mini ? 0 : 1)
+                .allowsHitTesting(!mini)
 
-            // 弹幕层（Metal 自绘，位于视频之上、控件之下）
+            videoLayer
+
+            // 弹幕层（Metal 自绘，位于视频之上、控件之下）；浮窗模式隐藏
             DanmakuOverlay(engine: danmakuEngine)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
+                .opacity(mini ? 0 : 1)
 
-            VStack { topBar; Spacer(); skipPill; controlBar }
-            toolCluster
-            panelLayer
+            if mini {
+                MiniPlayerChrome(session: session,
+                                 size: Self.miniWindowSize,
+                                 drag: $miniDrag,
+                                 onExpand: { withAnimation(.dsSpring) { mini = false } },
+                                 onClose: onClose)
+                    .offset(miniOffset)
+            } else {
+                VStack { topBar; Spacer(); skipPill; controlBar }
+                toolCluster
+                panelLayer
+            }
         }
-        .onTapGesture { withAnimation(.dsSpring) { controlsVisible.toggle() } }
-        .statusBarHidden(true)
+        .background(
+            // 容器尺寸回传（浮窗定位与边界钳制）
+            GeometryReader { g in
+                Color.clear.preference(key: ContainerSizeKey.self, value: g.size)
+            }
+        )
+        .onTapGesture {
+            guard !mini else { return }
+            withAnimation(.dsSpring) { controlsVisible.toggle() }
+        }
+        .statusBarHidden(!mini)
         .persistentSystemOverlays(.hidden)
-        // 横屏闸门：仅播放页放行横屏（物理朝向跟随）；关闭播放器自动旋回竖屏
+        .onPreferenceChange(ContainerSizeKey.self) { bounds = $0 }
+        // 横屏闸门：仅全屏播放放行横屏（物理朝向跟随）；浮窗/关闭自动旋回竖屏
         .onAppear { OrientationGate.shared.allowLandscape = true }
+        .onChange(of: mini) { _, m in
+            OrientationGate.shared.allowLandscape = !m
+            if !m { controlsVisible = true }
+        }
         .task {
             // 重绑真实数据库（init 时 env 不可用只能用内存库）
             session.useDatabase(env.database)
@@ -101,15 +139,40 @@ struct PlayerContainerView: View {
         }
     }
 
-    // MARK: 视频层
+    // MARK: 视频层（全屏/浮窗同一视图身份，仅几何变化）
     private var videoLayer: some View {
         EngineSurface(engine: session.engine)
+            .id(session.engineKind)   // 换内核时重建渲染视图（新引擎需重新挂载渲染层）
+            .frame(width: mini ? Self.miniWindowSize.width : nil,
+                   height: mini ? Self.miniWindowSize.height : nil)
+            .frame(maxWidth: mini ? nil : .infinity,
+                   maxHeight: mini ? nil : .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: mini ? 12 : 0, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: mini ? 12 : 0, style: .continuous)
+                    .strokeBorder(Color.white.opacity(mini ? 0.22 : 0))
+            )
+            .ignoresSafeArea(edges: mini ? Edge.Set() : .all)
+            .offset(mini ? miniOffset : .zero)
+    }
+
+    /// 浮窗中心点相对容器中心的偏移：默认停靠右下（避开 Tab 栏），拖动后钳制在容器内
+    private var miniOffset: CGSize {
+        let win = Self.miniWindowSize
+        guard bounds.width > win.width + 12, bounds.height > win.height + 12 else { return .zero }
+        let margin: CGFloat = 12
+        let bottomReserve: CGFloat = 86   // Tab 栏高度(62) + 底距(18) + 呼吸(6)
+        let defaultCX = bounds.width - margin - win.width / 2
+        let defaultCY = bounds.height - bottomReserve - win.height / 2
+        let cx = min(max(defaultCX + miniDrag.width, win.width / 2 + 6), bounds.width - win.width / 2 - 6)
+        let cy = min(max(defaultCY + miniDrag.height, win.height / 2 + 6), bounds.height - bottomReserve - win.height / 2)
+        return CGSize(width: cx - bounds.width / 2, height: cy - bounds.height / 2)
     }
 
     // MARK: 顶部信息条
     private var topBar: some View {
         HStack(alignment: .top, spacing: 12) {
-            Button { dismiss() } label: {
+            Button { onClose() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.dsInk)
@@ -190,14 +253,25 @@ struct PlayerContainerView: View {
         .animation(.dsSpring, value: controlsVisible)
     }
 
+    /// PiP 按钮：AVPlayer 走系统画中画；mpv 无系统 PiP → 收起为应用内浮窗
     private var pipButton: some View {
-        Button { session.togglePiP() } label: {
+        Button {
+            if session.engine.capabilities.contains(.pip) {
+                session.togglePiP()
+            } else {
+                enterMini()
+            }
+        } label: {
             Image(systemName: "rectangle.inset.filled.on.rectangle.filled")
                 .font(.system(size: 17))
         }
-        .disabled(!(session.engine.capabilities.contains(.pip)))
-        .opacity(session.engine.capabilities.contains(.pip) ? 1 : 0.35)
         .frame(maxWidth: .infinity)
+    }
+
+    /// 收起为浮窗（mpv 小窗）
+    private func enterMini() {
+        controlsVisible = true
+        withAnimation(.dsSpring) { mini = true }
     }
 
     private var slider: some View {
@@ -272,9 +346,12 @@ struct PlayerContainerView: View {
             toolIcon("text.bubble") {
                 withAnimation(.dsEaseOut) { activePanel = .danmaku }
             }
-            toolIcon("rectangle.inset.filled.on.rectangle.filled",
-                     enabled: session.engine.capabilities.contains(.pip)) {
-                session.togglePiP()
+            toolIcon("rectangle.inset.filled.on.rectangle.filled") {
+                if session.engine.capabilities.contains(.pip) {
+                    session.togglePiP()
+                } else {
+                    enterMini()
+                }
             }
             toolIcon("ellipsis") {
                 withAnimation(.dsEaseOut) { activePanel = .more }
@@ -424,4 +501,73 @@ struct EngineSurface: UIViewRepresentable {
         engine.makeRenderView() as? UIView ?? UIView()
     }
     func updateUIView(_ view: UIView, context: Context) {}
+}
+
+// MARK: - 浮窗控制层（mpv 无系统 PiP：自绘可拖动小窗 chrome）
+
+/// 浮窗交互层：点击还原全屏、拖动移动位置、底部条播放暂停/还原/关闭。
+/// 自身透明，仅负责手势与按钮；视频画面由下层 videoLayer 呈现。
+private struct MiniPlayerChrome: View {
+    @ObservedObject var session: PlaybackSession
+    let size: CGSize
+    @Binding var drag: CGSize          // 相对默认停靠点的拖动偏移（容器负责钳制）
+    let onExpand: () -> Void
+    let onClose: () -> Void
+
+    @State private var dragStart: CGSize?
+
+    var body: some View {
+        Color.clear
+            .frame(width: size.width, height: size.height)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(alignment: .bottom) { controls }
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.22))
+            )
+            .onTapGesture(perform: onExpand)
+            .gesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { v in
+                        if dragStart == nil { dragStart = drag }
+                        drag = CGSize(width: dragStart!.width + v.translation.width,
+                                      height: dragStart!.height + v.translation.height)
+                    }
+                    .onEnded { _ in dragStart = nil }
+            )
+    }
+
+    private var controls: some View {
+        HStack(spacing: 0) {
+            Button {
+                session.isPlaying ? session.pause() : session.play()
+            } label: {
+                Image(systemName: session.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 28, height: 24)
+            }
+            Spacer(minLength: 6)
+            Button(action: onExpand) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .frame(width: 28, height: 24)
+            }
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .frame(width: 28, height: 24)
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 4)
+        .frame(height: 24)
+        .background(Color.black.opacity(0.55))
+    }
+}
+
+// MARK: - 容器尺寸回传
+
+private struct ContainerSizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }

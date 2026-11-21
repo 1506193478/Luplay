@@ -6,20 +6,34 @@ struct RootView: View {
 
     @State private var tab: Tab = .home
     @State private var playerSession: PlayerSession?
+    @State private var playerMini = false   // 播放器浮窗模式（mpv 小窗与 Tab 共存）
+
+    /// 播放器全屏接管中（浮窗模式下 Tab 栏恢复可用）
+    private var playerFullscreen: Bool { playerSession != nil && !playerMini }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            // 播放器常驻 overlay（非 fullScreenCover）：
+            // 全屏/浮窗是同一渲染视图的几何切换，mpv GL 渲染上下文不销毁
+            if let session = playerSession {
+                PlayerContainerView(request: session.request,
+                                    mini: $playerMini,
+                                    onClose: { withAnimation(.dsEaseOut) { playerSession = nil } })
+                    .id(session.id)   // 每次新开播放器强制重建（StateObject 会话不串场）
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+
             tabBar
-                .padding(.bottom, 18)
-                .padding(.horizontal, 40)
+                .opacity(playerFullscreen ? 0 : 1)
+                .allowsHitTesting(!playerFullscreen)
+                .animation(.dsEaseOut, value: playerFullscreen)
+                .zIndex(2)
         }
         .ignoresSafeArea(.keyboard)
-        .fullScreenCover(item: $playerSession) { session in
-            PlayerContainerView(request: session.request)
-        }
     }
 
     @ViewBuilder
@@ -33,7 +47,8 @@ struct RootView: View {
     }
 
     private func play(_ request: PlayRequest) {
-        playerSession = PlayerSession(request: request)
+        playerMini = false
+        withAnimation(.dsEaseOut) { playerSession = PlayerSession(request: request) }
     }
 
     private var tabBar: some View {
@@ -48,6 +63,8 @@ struct RootView: View {
             // 内容(图标21+间距3+标签12=36)在 62pt 外框下垂直居中不溢出
         }
         .frame(height: 62)
+        .padding(.bottom, 18)
+        .padding(.horizontal, 40)
         .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
     }
 
