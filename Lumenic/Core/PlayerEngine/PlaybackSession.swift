@@ -88,6 +88,14 @@ final class PlaybackSession: ObservableObject {
         item = newItem
     }
 
+    /// 切换剧集（上下集/选集）：旧集进度落盘 → 换 mediaKey → 按新 key 恢复进度重载。
+    /// 同引擎重载，渲染上下文不重建；失败（load 抛错）保持原状。
+    func switchMedia(key newKey: String, to newItem: PlayableItem) async {
+        close()   // 旧集进度落盘（幂等）
+        mediaKey = newKey
+        await start(newItem)
+    }
+
     func play() { engine.play(); isPlaying = true }
     func pause() { engine.pause(); isPlaying = false }
     func seek(to seconds: TimeInterval) { engine.seek(to: seconds) }

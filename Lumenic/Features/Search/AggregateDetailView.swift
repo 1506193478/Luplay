@@ -205,12 +205,12 @@ struct AggregateDetailView: View {
             let eps = try await provider.episodes(of: item)
             guard let ep = eps.first else { return nil }
             let info = try await provider.streamURL(of: ep)
-            return (ep, info)
+            return (ep, [], info)   // 电影无剧集通道
         }
         finishPlay(options: options, label: "正片", failText: "所有片源获取播放地址失败")
     }
 
-    /// 剧集：按集序号在各服务器取对应集，多源对比播放
+    /// 剧集：按集序号在各服务器取对应集，多源对比播放；携带全集列表供播放器上下集切换
     private func playEpisode(at index: Int) async {
         isFetching = true
         errorText = nil
@@ -222,13 +222,19 @@ struct AggregateDetailView: View {
             guard let eps = episodeCache[item.id], eps.indices.contains(index) else { return nil }
             let ep = eps[index]
             let info = try await provider.streamURL(of: ep)
-            return (ep, info)
+            return (ep, eps, info)
         }
-        finishPlay(options: options, label: "第\(index + 1)集", failText: "获取第\(index + 1)集播放地址失败")
+        // 全集标签以首个有集列表的剧集源为准（各源集数一般一致）
+        let titles = seriesItems.lazy.compactMap { episodeCache[$0.id] }.first.map { eps in
+            eps.enumerated().map { idx, ep in ep.episode > 0 ? "第\(ep.episode)集" : "#\(idx + 1)" }
+        } ?? []
+        finishPlay(options: options, label: "第\(index + 1)集",
+                   failText: "获取第\(index + 1)集播放地址失败",
+                   episodes: titles, currentIndex: index)
     }
 
     private func collectOptions(for items: [SourceItem],
-                                fetch: @escaping (SourceProvider, SourceItem) async throws -> (Episode, StreamInfo)?
+                                fetch: @escaping (SourceProvider, SourceItem) async throws -> (Episode, [Episode], StreamInfo)?
     ) async -> [StreamOption] {
         var options: [StreamOption] = []
         await withTaskGroup(of: StreamOption?.self) { group in
@@ -237,11 +243,17 @@ struct AggregateDetailView: View {
                 let name = provider.displayName
                 group.addTask {
                     do {
-                        guard let (ep, info) = try await fetch(provider, item) else { return nil }
+                        guard let (ep, eps, info) = try await fetch(provider, item) else { return nil }
                         // refresh 闭包捕获 provider+episode：Alist 直链有时效，续播/换源前重取
-                        return StreamOption(id: "\(item.id)|\(ep.id)", providerId: item.providerId,
-                                            serverName: name, info: info,
-                                            refresh: { try await provider.streamURL(of: ep) })
+                        // episodeStream：剧集切换通道（按集序号取该源对应集的流）
+                        return StreamOption(
+                            id: "\(item.id)|\(ep.id)", providerId: item.providerId,
+                            serverName: name, info: info,
+                            refresh: { try await provider.streamURL(of: ep) },
+                            episodeStream: eps.isEmpty ? nil : { idx in
+                                guard eps.indices.contains(idx) else { throw ProviderError.notImplemented }
+                                return try await provider.streamURL(of: eps[idx])
+                            })
                     } catch {
                         return nil
                     }
@@ -252,12 +264,15 @@ struct AggregateDetailView: View {
         return options.sorted { $0.info.qualityScore > $1.info.qualityScore }
     }
 
-    private func finishPlay(options: [StreamOption], label: String, failText: String) {
+    private func finishPlay(options: [StreamOption], label: String, failText: String,
+                            episodes: [String]? = nil, currentIndex: Int = 0) {
         guard !options.isEmpty else {
             errorText = failText
             return
         }
-        onPlay(PlayRequest(title: result.title, episodeLabel: label, options: options))
+        onPlay(PlayRequest(title: result.title, episodeLabel: label, options: options,
+                           episodeTitles: (episodes?.isEmpty == false) ? episodes : nil,
+                           currentEpisodeIndex: currentIndex))
     }
 }
 

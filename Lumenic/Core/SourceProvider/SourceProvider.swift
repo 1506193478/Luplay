@@ -103,6 +103,8 @@ struct StreamOption: Identifiable {
     var info: StreamInfo    // var：续播/换源前可通过 refresh 刷新为最新直链
     /// 直链时效刷新（Alist raw_url 有时效）：重新取流信息；nil 表示链接长期有效
     var refresh: (() async throws -> StreamInfo)? = nil
+    /// 剧集切换通道：按集序号取该源对应集的流信息；nil = 电影/单集
+    var episodeStream: ((Int) async throws -> StreamInfo)? = nil
 }
 
 struct PlayRequest: Identifiable {
@@ -110,6 +112,10 @@ struct PlayRequest: Identifiable {
     let title: String
     let episodeLabel: String
     let options: [StreamOption]
+    /// 全集标签列表（仅剧集，nil = 电影）：用于上下集切换与选集面板
+    var episodeTitles: [String]? = nil
+    /// 当前播放的集序号（episodeTitles 下标）
+    var currentEpisodeIndex: Int = 0
 
     /// 质量分最高的片源（默认选中）
     var bestOption: StreamOption? {

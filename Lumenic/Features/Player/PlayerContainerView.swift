@@ -12,6 +12,10 @@ struct PlayerContainerView: View {
     let onClose: () -> Void
     @EnvironmentObject private var env: AppEnvironment
 
+    /// 当前生效的播放请求（切集时整体重建，进度按集落盘）
+    @State private var activeRequest: PlayRequest
+    @State private var switchingEpisode = false
+
     /// 浮窗尺寸（16:9）
     static let miniWindowSize = CGSize(width: 168, height: 94)
 
@@ -50,6 +54,7 @@ struct PlayerContainerView: View {
         self.request = request
         self._mini = mini
         self.onClose = onClose
+        self._activeRequest = State(initialValue: request)
         // 内核自动选择（方案 §3.4）：按最佳片源信息实时推荐（设置页"默认内核"可覆盖）；mpv 不可用时回退
         let best = request.bestOption
         var kind = best.map { EngineSelector.recommend(container: $0.info.container,
@@ -65,10 +70,10 @@ struct PlayerContainerView: View {
     }
 
     private var currentOption: StreamOption? {
-        request.options.first { $0.id == selectedOptionID } ?? request.bestOption
+        activeRequest.options.first { $0.id == selectedOptionID } ?? activeRequest.bestOption
     }
 
-    enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多", speed = "倍速", debug = "调试" }
+    enum Panel: String { case sources = "来源", danmaku = "弹幕", subtitle = "字幕", cast = "投屏", more = "更多", speed = "倍速", debug = "调试", episodes = "剧集" }
 
     var body: some View {
         ZStack {
@@ -104,6 +109,17 @@ struct PlayerContainerView: View {
                 toolCluster
                 panelLayer
                 gestureHud
+                if switchingEpisode {
+                    // 切集遮罩：取流+重载期间挡住交互
+                    ZStack {
+                        Color.black.opacity(0.65).ignoresSafeArea()
+                        VStack(spacing: 10) {
+                            ProgressView().tint(.white)
+                            Text("正在切换剧集…").font(.dsCaption).foregroundStyle(.dsInk)
+                        }
+                    }
+                    .transition(.opacity)
+                }
             }
         }
         .background(
@@ -135,9 +151,9 @@ struct PlayerContainerView: View {
             // 片头片尾标记（M6）
             skipMarker = try? env.database.skipMarker(forKey: session.storageKey)
             // 弹幕自动匹配（弹弹play；失败自动落演示弹幕）
-            danmakuEngine.prepareMatch(title: request.title, episodeLabel: request.episodeLabel)
-            await danmakuEngine.autoMatch(title: request.title,
-                                          episodeLabel: request.episodeLabel,
+            danmakuEngine.prepareMatch(title: activeRequest.title, episodeLabel: activeRequest.episodeLabel)
+            await danmakuEngine.autoMatch(title: activeRequest.title,
+                                          episodeLabel: activeRequest.episodeLabel,
                                           client: env.dandanplay)
         }
         .onChange(of: session.tick?.position) { _, pos in
@@ -207,10 +223,10 @@ struct PlayerContainerView: View {
                     .foregroundStyle(.dsInk)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(request.title).font(.system(size: 16, weight: .bold)).foregroundStyle(.dsInk)
+                Text(activeRequest.title).font(.system(size: 16, weight: .bold)).foregroundStyle(.dsInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                Text(request.episodeLabel).font(.dsCaption).foregroundStyle(.dsInk2)
+                Text(activeRequest.episodeLabel).font(.dsCaption).foregroundStyle(.dsInk2)
                     .lineLimit(1)
                 HStack(spacing: 5) {
                     if let info = currentOption?.info {
@@ -227,6 +243,19 @@ struct PlayerContainerView: View {
                 }
             }
             Spacer()
+            // 剧集导航：上一集 / 下一集（仅剧集内容显示）
+            if activeRequest.episodeTitles != nil {
+                HStack(spacing: 8) {
+                    epNavButton("chevron.left.2",
+                                enabled: activeRequest.currentEpisodeIndex > 0) {
+                        Task { await switchEpisode(to: activeRequest.currentEpisodeIndex - 1) }
+                    }
+                    epNavButton("chevron.right.2",
+                                enabled: activeRequest.currentEpisodeIndex < (activeRequest.episodeTitles?.count ?? 0) - 1) {
+                        Task { await switchEpisode(to: activeRequest.currentEpisodeIndex + 1) }
+                    }
+                }
+            }
             // 缓冲健康度（对标调试条）
             Text(bufferText)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
@@ -269,6 +298,9 @@ struct PlayerContainerView: View {
             HStack(spacing: 0) {
                 panelButton(.cast, icon: "rectangle.on.rectangle")
                 pipButton
+                if activeRequest.episodeTitles != nil {
+                    panelButton(.episodes, icon: "list.bullet")
+                }
                 panelButton(.sources, icon: "square.stack.3d.up")
                 panelButton(.subtitle, icon: "captions.bubble")
                 panelButton(.danmaku, icon: "text.bubble")
@@ -566,6 +598,19 @@ struct PlayerContainerView: View {
         .frame(maxWidth: .infinity)   // 面板行均匀分布，图标永不裁切
     }
 
+    /// 上一集/下一集小按钮（顶部条）
+    private func epNavButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.dsGlassBorder))
+        }
+        .foregroundStyle(.dsInk)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.3)
+    }
+
     // MARK: 右侧工具簇（真实功能；锚定在控制条上方，不再用硬偏移）
     private var toolCluster: some View {
         VStack(spacing: 14) {
@@ -609,7 +654,7 @@ struct PlayerContainerView: View {
         if let panel = activePanel {
             switch panel {
             case .sources:
-                SourceComparePanel(options: request.options,
+                SourceComparePanel(options: activeRequest.options,
                                    selectedID: $selectedOptionID,
                                    onSelect: { option in
                                        Task { await switchTo(option) }
@@ -621,7 +666,7 @@ struct PlayerContainerView: View {
             case .cast:
                 CastPanel(session: session,
                           streamInfo: currentOption?.info,
-                          title: "\(request.title) \(request.episodeLabel)",
+                          title: "\(activeRequest.title) \(activeRequest.episodeLabel)",
                           onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             case .more:
                 MorePanel(session: session,
@@ -642,8 +687,60 @@ struct PlayerContainerView: View {
             case .speed:
                 SpeedPanel(session: session,
                            onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
+            case .episodes:
+                EpisodesPanel(titles: activeRequest.episodeTitles ?? [],
+                              currentIndex: activeRequest.currentEpisodeIndex,
+                              onSelect: { index in Task { await switchEpisode(to: index) } },
+                              onClose: { withAnimation(.dsEaseOut) { activePanel = nil } })
             }
         }
+    }
+
+    /// 切换剧集：各片源按集序号并发取流 → switchMedia 同引擎重载（渲染上下文不重建），
+    /// 旧集进度落盘、新集进度恢复；弹幕重匹配 + 片头片尾标记重载。
+    private func switchEpisode(to index: Int) async {
+        guard let titles = activeRequest.episodeTitles, titles.indices.contains(index),
+              index != activeRequest.currentEpisodeIndex else { return }
+        switchingEpisode = true
+        defer { switchingEpisode = false }
+        var options: [StreamOption] = []
+        await withTaskGroup(of: StreamOption?.self) { group in
+            for base in activeRequest.options {
+                guard let fetch = base.episodeStream else { continue }
+                group.addTask {
+                    do {
+                        let info = try await fetch(index)
+                        return StreamOption(id: "\(base.id)#\(index)", providerId: base.providerId,
+                                            serverName: base.serverName, info: info,
+                                            refresh: { try await fetch(index) },
+                                            episodeStream: base.episodeStream)
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+            for await o in group { if let o { options.append(o) } }
+        }
+        let sorted = options.sorted { $0.info.qualityScore > $1.info.qualityScore }
+        guard let best = sorted.first else { return }
+        let label = titles[index]
+        await session.switchMedia(key: "\(activeRequest.title)|\(label)",
+                                  to: PlayableItem(url: best.info.url, headers: best.info.headers,
+                                                   engine: session.engineKind, startPosition: 0))
+        selectedOptionID = best.id
+        autoSkipFired = false
+        skipMarker = try? env.database.skipMarker(forKey: session.storageKey)
+        withAnimation(.dsEaseOut) {
+            activeRequest = PlayRequest(title: activeRequest.title, episodeLabel: label,
+                                        options: sorted,
+                                        episodeTitles: activeRequest.episodeTitles,
+                                        currentEpisodeIndex: index)
+            activePanel = nil
+        }
+        danmakuEngine.prepareMatch(title: activeRequest.title, episodeLabel: label)
+        await danmakuEngine.autoMatch(title: activeRequest.title,
+                                      episodeLabel: label,
+                                      client: env.dandanplay)
     }
 
     /// 换源（进度保留，M4 来源对比；直链有时效的片源先刷新再切换）
