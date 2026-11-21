@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import MediaPlayer
 
 /// 播放器容器：全屏视频层 + 顶部信息条 + 底部控制条 + 右侧工具簇 + 玻璃面板。
 /// 视频输出与控制走 PlaybackSession；片源来自 PlayRequest（真实片源 / 演示流）。
@@ -25,6 +26,25 @@ struct PlayerContainerView: View {
     @State private var autoSkipFired = false
     @State private var miniDrag: CGSize = .zero   // 相对默认停靠点（右下）的拖动偏移
     @State private var bounds: CGSize = .zero     // 容器安全区内尺寸（浮窗定位/钳制用）
+
+    // MARK: 手势状态（全屏）
+    @State private var locked = false             // 锁屏防误触
+    @State private var hud: GestureHud?           // 手势 HUD 反馈
+    @State private var hudTask: Task<Void, Never>?
+    @State private var singleTapTask: Task<Void, Never>?
+    @State private var boostRate: Double?         // 长按 2x 速览前的原倍速
+    @State private var panAxisSettled = false     // 滑动方向已判定
+    @State private var panIsVertical = false
+    @State private var panLeftSide = false
+    @State private var panStartBrightness: Double = 0
+    @State private var panStartVolume: Float = 0
+
+    /// 手势 HUD 类型
+    private enum GestureHud: Equatable {
+        case seekBack, seekForward, playPause, boost
+        case brightness(Double)   // 0-1
+        case volume(Float)        // 0-1
+    }
 
     init(request: PlayRequest, mini: Binding<Bool>, onClose: @escaping () -> Void) {
         self.request = request
@@ -66,6 +86,11 @@ struct PlayerContainerView: View {
                 .allowsHitTesting(false)
                 .opacity(mini ? 0 : 1)
 
+            // 手势层（仅全屏）：位于控件之下，按钮/进度条等子视图优先响应
+            if !mini {
+                gestureLayer
+            }
+
             if mini {
                 MiniPlayerChrome(session: session,
                                  size: Self.miniWindowSize,
@@ -75,8 +100,10 @@ struct PlayerContainerView: View {
                     .offset(miniOffset)
             } else {
                 VStack { topBar; Spacer(); skipPill; controlBar }
+                lockOverlay
                 toolCluster
                 panelLayer
+                gestureHud
             }
         }
         .background(
@@ -85,15 +112,14 @@ struct PlayerContainerView: View {
                 Color.clear.preference(key: ContainerSizeKey.self, value: g.size)
             }
         )
-        .onTapGesture {
-            guard !mini else { return }
-            withAnimation(.dsSpring) { controlsVisible.toggle() }
-        }
         .statusBarHidden(!mini)
         .persistentSystemOverlays(.hidden)
         .onPreferenceChange(ContainerSizeKey.self) { bounds = $0 }
         // 横屏闸门：仅全屏播放放行横屏（物理朝向跟随）；浮窗/关闭自动旋回竖屏
-        .onAppear { OrientationGate.shared.allowLandscape = true }
+        .onAppear {
+            OrientationGate.shared.allowLandscape = true
+            SystemVolumeController.shared.attachIfNeeded()   // 提前挂载，音量滑杆就绪
+        }
         .onChange(of: mini) { _, m in
             OrientationGate.shared.allowLandscape = !m
             if !m { controlsVisible = true }
@@ -134,6 +160,9 @@ struct PlayerContainerView: View {
             danmakuEngine.setSuppressed(visible ? 1 : 0)
         }
         .onDisappear {
+            hudTask?.cancel()
+            singleTapTask?.cancel()
+            endBoost()
             OrientationGate.shared.allowLandscape = false   // 关闸 → 系统旋回竖屏
             session.close()
         }
@@ -272,6 +301,204 @@ struct PlayerContainerView: View {
     private func enterMini() {
         controlsVisible = true
         withAnimation(.dsSpring) { mini = true }
+    }
+
+    // MARK: 手势层（仅全屏；锁屏/面板打开时不响应）
+
+    private var gestureLayer: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(overlayGestures)
+            .animation(.dsSpring, value: hud)
+    }
+
+    /// 组合手势：双击分区（快退/快进/播放暂停）+ 单击显隐 + 竖滑亮度音量 + 长按 2x 速览
+    private var overlayGestures: some Gesture {
+        // 双击与单击同时监听：双击命中时撤销单击的延时任务
+        let taps = SpatialTapGesture(count: 2)
+            .onEnded { v in handleDoubleTap(at: v.location) }
+            .simultaneously(with: TapGesture().onEnded { scheduleSingleTap() })
+        // 竖滑：左半屏亮度、右半屏音量
+        let pan = DragGesture(minimumDistance: 28)
+            .onChanged { v in handlePan(v) }
+            .onEnded { _ in handlePanEnd() }
+        // 长按 0.5s 进入 2x 速览，松手恢复
+        let boost = LongPressGesture(minimumDuration: 0.5)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            .onChanged { v in if case .second(true, _) = v { startBoost() } }
+            .onEnded { _ in endBoost() }
+        return taps.simultaneously(with: pan).simultaneously(with: boost)
+    }
+
+    private func handleDoubleTap(at location: CGPoint) {
+        guard !locked, activePanel == nil, !scrubbing else { return }
+        singleTapTask?.cancel()
+        singleTapTask = nil
+        let width = max(1, bounds.width)
+        let x = location.x / width
+        if x < 0.35 {
+            seekRel(-10)
+            hud = .seekBack
+        } else if x > 0.65 {
+            seekRel(10)
+            hud = .seekForward
+        } else {
+            session.isPlaying ? session.pause() : session.play()
+            hud = .playPause
+        }
+        scheduleHudHide()
+    }
+
+    /// 单击显隐控件（延时执行，双击时会被撤销）
+    private func scheduleSingleTap() {
+        guard !locked, activePanel == nil else { return }
+        singleTapTask?.cancel()
+        singleTapTask = Task {
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            withAnimation(.dsSpring) { controlsVisible.toggle() }
+        }
+    }
+
+    private func handlePan(_ v: DragGesture.Value) {
+        guard !locked, activePanel == nil, !scrubbing else { return }
+        if !panAxisSettled {
+            guard abs(v.translation.height) > 22 else { return }
+            panAxisSettled = true
+            panIsVertical = abs(v.translation.height) > abs(v.translation.width) * 1.2
+            panLeftSide = v.startLocation.x < bounds.width / 2
+            if panIsVertical {
+                if panLeftSide { panStartBrightness = UIScreen.main.brightness }
+                else { panStartVolume = SystemVolumeController.shared.current }
+            }
+        }
+        guard panIsVertical else { return }
+        let delta = -v.translation.height / 300.0
+        if panLeftSide {
+            let nb = min(1, max(0.02, panStartBrightness + delta))
+            UIScreen.main.brightness = nb
+            hud = .brightness(nb)
+        } else {
+            let nv = min(1, max(0, panStartVolume + delta))
+            SystemVolumeController.shared.set(nv)
+            hud = .volume(nv)
+        }
+        scheduleHudHide()
+    }
+
+    private func handlePanEnd() {
+        panAxisSettled = false
+        panIsVertical = false
+        scheduleHudHide()
+    }
+
+    private func startBoost() {
+        guard boostRate == nil, !locked, activePanel == nil else { return }
+        boostRate = session.rate
+        session.setRate(2.0)
+        hud = .boost
+        scheduleHudHide()
+    }
+
+    private func endBoost() {
+        guard let r = boostRate else { return }
+        boostRate = nil
+        session.setRate(r)
+        hud = nil
+    }
+
+    private func seekRel(_ delta: Double) {
+        let pos = session.tick?.position ?? 0
+        session.seek(to: max(0, pos + delta))
+    }
+
+    private func scheduleHudHide(after: Duration = .milliseconds(900)) {
+        hudTask?.cancel()
+        hudTask = Task {
+            try? await Task.sleep(for: after)
+            guard !Task.isCancelled else { return }
+            hud = nil
+        }
+    }
+
+    // MARK: 手势 HUD（屏幕居中反馈）
+
+    @ViewBuilder
+    private var gestureHud: some View {
+        if let h = hud {
+            HStack(spacing: 10) {
+                switch h {
+                case .seekBack:
+                    Image(systemName: "gobackward.10").font(.system(size: 18, weight: .bold))
+                    Text("快退 10 秒").hudText
+                case .seekForward:
+                    Image(systemName: "goforward.10").font(.system(size: 18, weight: .bold))
+                    Text("快进 10 秒").hudText
+                case .playPause:
+                    Image(systemName: session.isPlaying ? "play.fill" : "pause.fill")
+                        .font(.system(size: 18, weight: .bold))
+                    Text(session.isPlaying ? "继续播放" : "已暂停").hudText
+                case .boost:
+                    Image(systemName: "gauge.with.needle").font(.system(size: 18, weight: .bold))
+                    Text("2× 速览中").hudText
+                case .brightness(let v):
+                    Image(systemName: "sun.max.fill").font(.system(size: 16, weight: .bold))
+                    hudMeter(fraction: v)
+                case .volume(let v):
+                    Image(systemName: v <= 0.001 ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 16, weight: .bold))
+                    hudMeter(fraction: CGFloat(v))
+                }
+            }
+            .foregroundStyle(.dsInk)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .background(Capsule().fill(Color.dsGlassFill))
+            .overlay(Capsule().strokeBorder(Color.dsGlassBorder))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .animation(.dsSpring, value: hud)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func hudMeter(fraction: CGFloat) -> some View {
+        let f = min(1, max(0, fraction))
+        return Capsule().fill(.white.opacity(0.25))
+            .frame(width: 110, height: 5)
+            .overlay(alignment: .leading) {
+                Capsule().fill(.white).frame(width: 110 * f, height: 5)
+            }
+    }
+
+    // MARK: 锁屏防误触
+
+    /// 控件隐藏后右缘露出小锁：点按锁定（全屏防误触）/ 解锁并还原控件
+    private var lockOverlay: some View {
+        Button {
+            withAnimation(.dsSpring) {
+                if locked {
+                    locked = false
+                    controlsVisible = true
+                } else {
+                    locked = true
+                    controlsVisible = false
+                }
+            }
+        } label: {
+            GlassSurface(shape: .capsule, interactive: true) {
+                Image(systemName: locked ? "lock.fill" : "lock.open.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.dsInk)
+                    .frame(width: 40, height: 40)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .padding(.trailing, 12)
+        .opacity(locked || !controlsVisible ? 1 : 0)
+        .allowsHitTesting(locked || !controlsVisible)
+        .animation(.dsSpring, value: controlsVisible)
+        .animation(.dsSpring, value: locked)
     }
 
     private var slider: some View {
@@ -491,6 +718,45 @@ extension View {
             .foregroundStyle(highlight ? .yellow : .dsInk)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Capsule().fill(highlight ? Color.yellow.opacity(0.18) : Color.dsGlassBorder))
+    }
+
+    /// 手势 HUD 文本样式
+    var hudText: some View {
+        font(.system(size: 13, weight: .bold))
+    }
+}
+
+// MARK: - 系统音量写入（iOS 唯一合规途径：窗口内 MPVolumeView 的 UISlider）
+
+/// 隐藏 MPVolumeView 挂在窗口外沿，提供系统音量读写；播放器手势竖滑音量用
+@MainActor
+final class SystemVolumeController {
+    static let shared = SystemVolumeController()
+    private let volumeView = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 10, height: 10))
+    private var sliderRef: UISlider?
+    private init() {}
+
+    /// 需先进入窗口层级 MPVolumeView 才生效；onAppear 时调用一次
+    func attachIfNeeded() {
+        guard volumeView.window == nil else { return }
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
+        guard let window else { return }
+        window.addSubview(volumeView)
+        sliderRef = volumeView.subviews.compactMap { $0 as? UISlider }.first
+    }
+
+    /// 当前系统音量（0-1）
+    var current: Float { AVAudioSession.sharedInstance().outputVolume }
+
+    /// 写入系统音量；UISlider 可能异步装载，每次写入时惰性查找
+    func set(_ v: Float) {
+        attachIfNeeded()
+        let slider = sliderRef ?? volumeView.subviews.compactMap { $0 as? UISlider }.first
+        sliderRef = slider
+        slider?.setValue(max(0, min(1, v)), animated: false)
     }
 }
 
