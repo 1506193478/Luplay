@@ -7,12 +7,14 @@ struct SearchView: View {
     @State private var query = ""
     @State private var searched = false
     @State private var detailTarget: SearchAggregator.AggregatedResult?
+    @State private var showURLPanel = false
 
     private var aggregator: SearchAggregator { env.aggregator }
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar.padding(.horizontal, 16).padding(.top, 10)
+            urlEntry.padding(.horizontal, 16).padding(.top, 10)
             if !searched {
                 hotList
             } else {
@@ -28,6 +30,39 @@ struct SearchView: View {
             })
             .presentationDetents([.large])
         }
+        // 链接播放玻璃面板（底部滑入，与播放器内面板同一容器）
+        .overlay(alignment: .bottom) {
+            if showURLPanel {
+                URLPlayPanel(onPlay: { openPlayer($0) },
+                             onClose: { withAnimation(.dsEaseOut) { showURLPanel = false } })
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(10)
+            }
+        }
+    }
+
+    /// 网络链接播放入口：粘贴直链 → 解析 → 播放
+    private var urlEntry: some View {
+        Button {
+            withAnimation(.dsEaseOut) { showURLPanel = true }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "link")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.dsInk)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.dsGlassBorder))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("链接播放").font(.system(size: 15, weight: .semibold)).foregroundStyle(.dsInk)
+                    Text("粘贴网络视频直链，解析后立即播放").font(.dsCaption).foregroundStyle(.dsInk2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(.dsInk3).font(.system(size: 13))
+            }
+            .padding(10)
+            .background(GlassSurface(shape: .rounded(16)) { Color.clear })
+        }
+        .buttonStyle(.plain)
     }
 
     private var searchBar: some View {
