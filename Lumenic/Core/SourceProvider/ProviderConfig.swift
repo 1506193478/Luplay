@@ -1,11 +1,14 @@
 import Foundation
 import Security
+import os
 
 // MARK: - Keychain 读写（服务器凭证 / API 密钥不入 UserDefaults）
 
 final class KeychainStore {
     static let shared = KeychainStore()
     private let service = "com.luplay.secrets"
+    /// Keychain 写失败必须可见：静默丢凭证 = 用户重启后配置蒸发
+    private static let log = Logger(subsystem: "com.luplay", category: "keychain")
 
     func set(_ data: Data?, for key: String) {
         var query: [String: Any] = [
@@ -16,14 +19,22 @@ final class KeychainStore {
         let status = SecItemCopyMatching(query as CFDictionary, nil)
         if status == errSecSuccess {
             if let data {
-                SecItemUpdate(query as CFDictionary,
-                              [kSecValueData as String: data] as CFDictionary)
+                let update = SecItemUpdate(query as CFDictionary,
+                                           [kSecValueData as String: data] as CFDictionary)
+                if update != errSecSuccess {
+                    Self.log.error("Keychain update 失败 key=\(key, privacy: .public) OSStatus=\(update)")
+                }
             } else {
                 SecItemDelete(query as CFDictionary)
             }
         } else if status == errSecItemNotFound, let data {
             query[kSecValueData as String] = data
-            SecItemAdd(query as CFDictionary, nil)
+            let add = SecItemAdd(query as CFDictionary, nil)
+            if add != errSecSuccess {
+                Self.log.error("Keychain add 失败 key=\(key, privacy: .public) OSStatus=\(add)")
+            }
+        } else if status != errSecSuccess {
+            Self.log.error("Keychain 查询失败 key=\(key, privacy: .public) OSStatus=\(status)")
         }
     }
 
@@ -36,7 +47,10 @@ final class KeychainStore {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var out: AnyObject?
-        SecItemCopyMatching(query as CFDictionary, &out)
+        let status = SecItemCopyMatching(query as CFDictionary, &out)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            Self.log.error("Keychain 读取失败 key=\(key, privacy: .public) OSStatus=\(status)")
+        }
         return out as? Data
     }
 }
@@ -81,6 +95,7 @@ struct ProviderConfig: Codable, Identifiable, Equatable {
 /// 片源配置持久化（Keychain）
 @MainActor
 final class ProviderStore: ObservableObject {
+    private static let log = Logger(subsystem: "com.luplay", category: "providers")
     @Published private(set) var configs: [ProviderConfig] = []
     private let keychainKey = "com.luplay.providerConfigs.v1"
 
@@ -106,7 +121,10 @@ final class ProviderStore: ObservableObject {
     }
 
     private func persist() {
-        let data = try? JSONEncoder().encode(configs)
+        guard let data = try? JSONEncoder().encode(configs) else {
+            Self.log.error("片源配置 JSON 编码失败，本次变更未持久化")
+            return
+        }
         KeychainStore.shared.set(data, for: keychainKey)
     }
 }

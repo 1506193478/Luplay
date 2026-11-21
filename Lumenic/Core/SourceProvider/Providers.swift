@@ -382,6 +382,8 @@ final class WebDAVProvider: SourceProvider {
     }
 
     private var authHeaders: [String: String] {
+        // 匿名访问（未填账号密码）时不带 Authorization 头，避免空 Basic 被服务器拒
+        if config.username.isEmpty && config.password.isEmpty { return [:] }
         let cred = "\(config.username):\(config.password)"
         return ["Authorization": "Basic " + Data(cred.utf8).base64EncodedString()]
     }
