@@ -93,11 +93,11 @@ final class MPVEngine: NSObject, PlayerEngine {
             mpv_set_option_string(handle, "http-header-fields", joined)
         }
         var args = cArgs(["loadfile", item.url.absoluteString, "replace"])
-        mpv_command(handle, args)
+        mpv_command(handle, &args)
         freeArgs(args)
         if item.startPosition > 0 {
             var seek = cArgs(["seek", String(item.startPosition), "absolute"])
-            mpv_command(handle, seek)
+            mpv_command(handle, &seek)
             freeArgs(seek)
         }
         #endif
@@ -130,7 +130,7 @@ final class MPVEngine: NSObject, PlayerEngine {
         #if canImport(Libmpv)
         guard let handle else { return }
         var args = cArgs(["seek", String(seconds), "absolute"])
-        mpv_command(handle, args)
+        mpv_command(handle, &args)
         freeArgs(args)
         #endif
     }
@@ -184,7 +184,7 @@ final class MPVEngine: NSObject, PlayerEngine {
         #if canImport(Libmpv)
         guard let handle else { return }
         var args = cArgs(["sub-add", url.absoluteString, "auto", "外挂字幕"])
-        mpv_command(handle, args)
+        mpv_command(handle, &args)
         freeArgs(args)
         #endif
     }

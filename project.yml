@@ -29,6 +29,7 @@ targets:
         OTHER_SWIFT_FLAGS: "$(inherited) -Xcc -DGLES_SILENCE_DEPRECATION"
         TARGETED_DEVICE_FAMILY: "1"          # 仅 iPhone
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # 全量声明支持方向，实际运行时由 AppDelegate 按播放页状态动态收紧（见 OrientationGate.swift）
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_x86_64: ""
