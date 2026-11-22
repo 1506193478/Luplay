@@ -61,6 +61,36 @@ final class TMDBService {
         return path.flatMap { URL(string: imageBaseURL + $0) }
     }
 
+    /// 公开多结果搜索（搜索页 TMDB 直搜段）：search/multi 返回影视条目（过滤 person），
+    /// 未配置密钥或请求失败返回空数组。仿照内部 search 的网络模式，无新增依赖。
+    func searchMulti(query: String, limit: Int = 18) async -> [TMDBSearchHit] {
+        guard let apiKey, !apiKey.isEmpty else { return [] }
+        guard var comps = URLComponents(string: "\(baseURL)/search/multi") else { return [] }
+        comps.queryItems = [
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "language", value: "zh-CN"),
+            URLQueryItem(name: "include_adult", value: "false"),
+        ]
+        guard let url = comps.url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = obj["results"] as? [[String: Any]] else { return [] }
+        return rows.prefix(limit).compactMap { raw in
+            guard let id = raw["id"] as? Int else { return nil }
+            let media = (raw["media_type"] as? String) ?? "movie"
+            guard media == "movie" || media == "tv" else { return nil }   // 过滤 person 等类型
+            let title = (raw["title"] as? String) ?? (raw["name"] as? String) ?? ""
+            guard !title.isEmpty else { return nil }
+            let date = (raw["release_date"] as? String) ?? (raw["first_air_date"] as? String) ?? ""
+            let year = date.count >= 4 ? Int(date.prefix(4)) : nil
+            let poster = (raw["poster_path"] as? String)
+                .flatMap { URL(string: "https://image.tmdb.org/t/p/w342\($0)") }
+            return TMDBSearchHit(id: id, title: title, year: year, mediaType: media,
+                                 posterURL: poster, rating: raw["vote_average"] as? Double)
+        }
+    }
+
     /// 详情元数据缓存：标题|年 → 详情（nil 也缓存，避免反复打接口）
     private var detailsCache: [String: TMDBDetails?] = [:]
 
@@ -179,6 +209,16 @@ struct TMDBSimilarItem: Identifiable, Hashable {
     let title: String
     let year: Int?
     let posterURL: URL?
+}
+
+/// TMDB 直搜条目（搜索页 TMDB 段行数据）
+struct TMDBSearchHit: Identifiable, Hashable {
+    let id: Int
+    let title: String
+    let year: Int?
+    let mediaType: String   // movie / tv
+    let posterURL: URL?
+    let rating: Double?
 }
 
 struct TMDBDetails {

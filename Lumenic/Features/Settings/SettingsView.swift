@@ -7,24 +7,20 @@ struct SettingsView: View {
     @State private var showAdd = false
     @State private var showSecrets = false
     @State private var engineOverride = UserDefaults.standard.string(forKey: "engine.override") ?? "auto"
+    // 子页切换（iOS 16 无 NavigationStack，模式同 LibraryView：@State 枚举 + ZStack）
+    @State private var subPage: SettingsSubPage? = nil
     // 密钥状态缓存：Keychain 是同步 IO，不在 body 渲染路径反复读
     @State private var dandanConfigured = false
     @State private var tmdbConfigured = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("设置")
-                    .font(.system(size: 30, weight: .heavy))
-                    .foregroundStyle(.dsLightInk)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-
-                syncSection
-                providerSection
-                playbackSection
-                secretsSection
-                Color.clear.frame(height: 120)
+        ZStack {
+            if let page = subPage {
+                subPageContent(page)
+                    .transition(.opacity)
+            } else {
+                mainShell
+                    .transition(.opacity)
             }
         }
         .background(Color.dsLightPage.ignoresSafeArea())
@@ -40,7 +36,58 @@ struct SettingsView: View {
         .sheet(isPresented: $showSecrets, onDismiss: { refreshSecretStatus() }) {
             SecretsEditView()
         }
-        .onAppear { refreshSecretStatus() }
+        .onAppear {
+            refreshSecretStatus()
+            // 子页内可能改过引擎覆盖，回主壳时同步显示
+            engineOverride = UserDefaults.standard.string(forKey: "engine.override") ?? "auto"
+        }
+    }
+
+    // MARK: 主壳（稿 v-set）
+
+    private var mainShell: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("设置")
+                    .font(.system(size: 30, weight: .heavy))
+                    .foregroundStyle(.dsLightInk)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+
+                syncSection
+                providerSection
+                playbackSection
+                secretsSection
+                aboutSection
+                Color.clear.frame(height: 120)
+            }
+        }
+    }
+
+    /// 子页路由：switch 拆小，避免 WMO 下大 body 泛型推断
+    @ViewBuilder
+    private func subPageContent(_ page: SettingsSubPage) -> some View {
+        switch page {
+        case .playback:
+            PlaybackSettingsPage(onBack: { closeSub() })
+        case .danmaku:
+            DanmakuSettingsPage(onBack: { closeSub() },
+                                onOpenAPI: { withAnimation(.dsEaseOut) { subPage = .danmakuAPI } })
+        case .danmakuAPI:
+            DanmakuAPIPage(onBack: { closeSub() })
+        case .gestures:
+            GestureHelpPage(onBack: { closeSub() })
+        case .about:
+            AboutPage(onBack: { closeSub() })
+        }
+    }
+
+    private func openSub(_ page: SettingsSubPage) {
+        withAnimation(.dsEaseOut) { subPage = page }
+    }
+
+    private func closeSub() {
+        withAnimation(.dsEaseOut) { subPage = nil }
     }
 
     private func refreshSecretStatus() {
@@ -150,12 +197,35 @@ struct SettingsView: View {
                     .tint(Color.dsAccent)
                 }
                 cardDivider
-                lightRow(icon: "4k.tv.hfill", tint: Color(red: 0.55, green: 0.35, blue: 0.85),
-                         title: "解码", subtitle: "视频工具箱硬解") {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.dsLightInk2.opacity(0.3))
+                Button { openSub(.playback) } label: {
+                    lightRow(icon: "4k.tv.hfill", tint: Color(red: 0.55, green: 0.35, blue: 0.85),
+                             title: "播放设置", subtitle: "引擎 · 硬解 · 续播 · 倍速记忆") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
                 }
+                .buttonStyle(.plain)
+                cardDivider
+                Button { openSub(.danmaku) } label: {
+                    lightRow(icon: "text.bubble", tint: Color(red: 0.20, green: 0.62, blue: 0.62),
+                             title: "弹幕设置", subtitle: "显示 · 字号 · 不透明度 · 速度") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+                cardDivider
+                Button { openSub(.gestures) } label: {
+                    lightRow(icon: "hand.draw", tint: Color(red: 0.91, green: 0.57, blue: 0.18),
+                             title: "手势与按钮", subtitle: "双击、滑动与长按说明") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 16)
@@ -192,6 +262,26 @@ struct SettingsView: View {
                              title: "TMDB API Key",
                              subtitle: tmdbConfigured ? "已配置 · 海报刮削与标题归一化生效"
                                                       : "未配置 · 文件型片源将没有海报") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: 关于（版本 / 开源致谢 / 免责声明）
+
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("关于")
+            lightCard {
+                Button { openSub(.about) } label: {
+                    lightRow(icon: "info.circle", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                             title: "关于 Luplay", subtitle: "版本 · 开源致谢 · 免责声明") {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12))
                             .foregroundStyle(.dsLightInk2.opacity(0.5))
@@ -346,5 +436,543 @@ struct SecretsEditView: View {
                     .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.dsLightBorder, lineWidth: 1))
             )
         }
+    }
+}
+
+// MARK: - 设置子页（对标稿 lpage/lnav：浅色二级页 · ‹ 返回 + 居中标题）
+// 导航模式同 LibraryView：@State 枚举 + ZStack 切换（iOS 16，不依赖 NavigationStack）。
+// 子页全部拆独立 struct，避免 WMO 泛型推断风险。
+
+/// 设置子页路由枚举
+private enum SettingsSubPage {
+    case playback, danmaku, danmakuAPI, gestures, about
+}
+
+/// 浅色二级页导航条（稿 lnav/lback：‹ 返回 + 居中标题）
+private struct SettingsNavBar: View {
+    let title: String
+    let onBack: () -> Void
+
+    var body: some View {
+        ZStack {
+            Text(title)
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.dsLightInk)
+                .lineLimit(1)
+            HStack(spacing: 0) {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(Color.dsAccent)
+                        .frame(width: 40, height: 40)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+    }
+}
+
+/// 子页页头（稿 sttl/ssub：大标题 + 说明）
+private struct SubPageHeader: View {
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 26, weight: .heavy))
+                .foregroundStyle(.dsLightInk)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.dsLightInk2)
+            }
+        }
+    }
+}
+
+/// 子页分组标题
+private struct SubPageSectionLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(.dsLightInk2)
+            .padding(.horizontal, 8)
+    }
+}
+
+/// 子页彩色图标 chip（与主壳 lightRow 的 chip 同款）
+private struct SubPageChip: View {
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(tint)
+            .frame(width: 28, height: 28)
+            .overlay(Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white))
+    }
+}
+
+/// 子页白卡片（与主壳 lightCard 同款）
+private struct SubPageCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.dsLightCard)
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.dsLightBorder, lineWidth: 1))
+            )
+    }
+}
+
+/// 子页通用行（subtitle 可空；trailing 自定义）
+private struct SubPageRow<Trailing: View>: View {
+    let icon: String
+    let tint: Color
+    let title: String
+    var subtitle: String? = nil
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SubPageChip(icon: icon, tint: tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.dsLightInk)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.dsLightInk2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            Spacer()
+            trailing
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+}
+
+/// 子页静态说明行（无交互；右侧可选灰色说明值）
+private struct SubPageInfoRow: View {
+    let icon: String
+    let tint: Color
+    let title: String
+    var subtitle: String? = nil
+    var value: String? = nil
+
+    var body: some View {
+        HStack(spacing: 12) {
+            SubPageChip(icon: icon, tint: tint)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.dsLightInk)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.dsLightInk2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            Spacer()
+            if let value {
+                Text(value)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.dsLightInk2)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+}
+
+// MARK: - 播放设置子页（稿 v-setplay 精选项）
+
+/// 播放设置子页：内核 / 硬解 / 启动续播 / 倍速记忆，全部真实持久化
+private struct PlaybackSettingsPage: View {
+    let onBack: () -> Void
+
+    // 引擎覆盖：PlayerEngine.swift 已读取 "engine.override"，真实生效
+    @AppStorage("engine.override") private var engine = "auto"
+    // TODO: MPVEngine 目前写死 videotoolbox 硬解（MPVEngine.swift hwdec），待播放器接入读取此开关
+    @AppStorage("playback.hwdec") private var hwdec = true
+    // TODO: 待播放器启动流程接入（打开 App 恢复进度前判断此开关）
+    @AppStorage("playback.resumeOnLaunch") private var resumeOnLaunch = true
+    // TODO: 待 SpeedPanel 接入（记住上次倍速，下个视频自动应用）
+    @AppStorage("playback.rateMemory") private var rateMemory = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "播放设置", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "播放", subtitle: "引擎、解码与续播")
+                    SubPageCard {
+                        SubPageRow(icon: "cpu", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                                   title: "播放引擎", subtitle: engineHint) {
+                            Picker("播放引擎", selection: $engine) {
+                                Text("自动").tag("auto")
+                                Text("AVPlayer").tag("avplayer")
+                                Text("mpv").tag("mpv")
+                            }
+                            .pickerStyle(.menu)
+                            .tint(Color.dsAccent)
+                        }
+                        subDivider
+                        SubPageRow(icon: "4k.tv.hfill", tint: Color(red: 0.55, green: 0.35, blue: 0.85),
+                                   title: "硬件解码", subtitle: "视频工具箱硬解，更省电；关闭后软解，兼容性更好") {
+                            Toggle("", isOn: $hwdec)
+                                .labelsHidden()
+                                .tint(Color.dsAccent)
+                        }
+                        subDivider
+                        SubPageRow(icon: "clock.arrow.circlepath", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                                   title: "启动时续播", subtitle: "打开 App 自动恢复上次播放进度") {
+                            Toggle("", isOn: $resumeOnLaunch)
+                                .labelsHidden()
+                                .tint(Color.dsAccent)
+                        }
+                        subDivider
+                        SubPageRow(icon: "speedometer", tint: Color(red: 0.95, green: 0.56, blue: 0.16),
+                                   title: "倍速记忆", subtitle: "记住上次选择的倍速，下个视频自动应用") {
+                            Toggle("", isOn: $rateMemory)
+                                .labelsHidden()
+                                .tint(Color.dsAccent)
+                        }
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    private var subDivider: some View {
+        Divider().overlay(Color.dsLightBorder).padding(.leading, 56)
+    }
+
+    private var engineHint: String {
+        switch engine {
+        case "avplayer": return "总是 AVPlayer（HLS / 杜比视界优先）"
+        case "mpv": return "总是 mpv（MKV / ASS 特效字幕优先）"
+        default: return "自动（按片源选择）"
+        }
+    }
+}
+
+// MARK: - 弹幕设置子页（稿 v-danm 精选项）
+
+/// 弹幕设置子页：显示开关 / 字号 / 不透明度 / 显示区域 / 速度 + API 入口
+private struct DanmakuSettingsPage: View {
+    let onBack: () -> Void
+    let onOpenAPI: () -> Void
+
+    // TODO: DanmakuEngine 的 isEnabled/fontSize/opacity/areaRatio 目前是内存态 @Published，
+    // 待播放器接入：启动时用这些键初始化引擎；已持久化的仅 "luplay.danmaku.blocklist"（屏蔽词）
+    @AppStorage("danmaku.enabled") private var enabled = true
+    @AppStorage("danmaku.fontsize") private var fontSize = 18
+    @AppStorage("danmaku.opacity") private var opacity = 90
+    @AppStorage("danmaku.area") private var areaPercent = 50
+    @AppStorage("danmaku.speed") private var speedPercent = 100
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "弹幕设置", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "弹幕", subtitle: "弹幕服务与显示")
+
+                    SubPageSectionLabel(text: "弹幕")
+                    SubPageCard {
+                        SubPageRow(icon: "text.bubble", tint: Color(red: 0.20, green: 0.62, blue: 0.62),
+                                   title: "播放时显示弹幕", subtitle: "关闭后播放器不再加载与渲染弹幕") {
+                            Toggle("", isOn: $enabled)
+                                .labelsHidden()
+                                .tint(Color.dsAccent)
+                        }
+                    }
+
+                    SubPageSectionLabel(text: "文字")
+                    SubPageCard {
+                        sliderRow(icon: "circle.lefthalf.filled", tint: Color(red: 0.95, green: 0.56, blue: 0.16),
+                                  title: "不透明度", valueText: "\(opacity)%",
+                                  value: Binding(get: { Double(opacity) }, set: { opacity = Int($0.rounded()) }),
+                                  range: 10...100, step: 5)
+                        subDivider
+                        sliderRow(icon: "textformat.size", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                                  title: "字号", valueText: "\(fontSize) pt",
+                                  value: Binding(get: { Double(fontSize) }, set: { fontSize = Int($0.rounded()) }),
+                                  range: 12...42, step: 1)
+                    }
+
+                    SubPageSectionLabel(text: "布局与速度")
+                    SubPageCard {
+                        SubPageRow(icon: "rectangle.split.2x1", tint: Color(red: 0.55, green: 0.35, blue: 0.85),
+                                   title: "显示区域", subtitle: "弹幕覆盖的画面高度") {
+                            Picker("显示区域", selection: $areaPercent) {
+                                Text("半屏").tag(50)
+                                Text("全屏").tag(100)
+                            }
+                            .pickerStyle(.menu)
+                            .tint(Color.dsAccent)
+                        }
+                        subDivider
+                        sliderRow(icon: "hare", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                                  title: "速度", valueText: "\(speedPercent)%",
+                                  value: Binding(get: { Double(speedPercent) }, set: { speedPercent = Int($0.rounded()) }),
+                                  range: 50...200, step: 10)
+                    }
+
+                    SubPageSectionLabel(text: "弹幕服务")
+                    SubPageCard {
+                        Button(action: onOpenAPI) {
+                            SubPageRow(icon: "globe", tint: Color(red: 0.85, green: 0.47, blue: 0.05),
+                                       title: "弹幕 API", subtitle: "弹弹play 密钥与接口") {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.dsLightInk2.opacity(0.5))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    private var subDivider: some View {
+        Divider().overlay(Color.dsLightBorder).padding(.leading, 56)
+    }
+
+    /// 标题行 + 行内滑杆（稿 stepRow 的滑杆实现）
+    private func sliderRow(icon: String, tint: Color, title: String, valueText: String,
+                           value: Binding<Double>, range: ClosedRange<Double>, step: Double) -> some View {
+        VStack(spacing: 0) {
+            SubPageRow(icon: icon, tint: tint, title: title) {
+                Text(valueText)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.dsAccent)
+            }
+            Slider(value: value, in: range, step: step)
+                .tint(Color.dsAccent)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+        }
+    }
+}
+
+// MARK: - 弹幕 API 子页（稿 v-dapi 最小实现：入口跳现有密钥编辑）
+
+/// 弹幕 API 子页：弹弹play 配置状态 + 跳转 SecretsEditView 编辑（密钥仍在 Keychain）
+private struct DanmakuAPIPage: View {
+    let onBack: () -> Void
+    @State private var showSecrets = false
+    // Keychain 同步 IO，进页读一次即可
+    @State private var configured = DandanplayConfig.isConfigured
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "弹幕 API", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "弹幕 API", subtitle: "弹弹play 开放平台签名")
+
+                    SubPageCard {
+                        Button { showSecrets = true } label: {
+                            SubPageRow(icon: "key.fill", tint: Color(red: 0.85, green: 0.47, blue: 0.05),
+                                       title: "弹弹play AppId / AppSecret",
+                                       subtitle: configured ? "已配置 AppId：\(DandanplayConfig.appId)"
+                                                            : "未配置 · 弹弹play 开放平台申请") {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.dsLightInk2.opacity(0.5))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Text("弹幕匹配调用弹弹play v2 接口，需要 AppId 与 AppSecret 签名；在 app.dandanplay.net 开放平台注册申请。密钥保存在 iOS Keychain，不会写入 UserDefaults 或代码仓库。")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.dsLightInk2)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+        .sheet(isPresented: $showSecrets, onDismiss: { configured = DandanplayConfig.isConfigured }) {
+            SecretsEditView()
+        }
+    }
+}
+
+// MARK: - 手势与按钮子页（稿 v-ges：静态说明）
+
+/// 手势与按钮说明子页：静态说明列表（播放器手势暂未开放自定义）
+private struct GestureHelpPage: View {
+    let onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "手势与按钮", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "手势", subtitle: "双击、滑动与长按")
+
+                    SubPageSectionLabel(text: "横向滑动")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "arrow.left.and.right", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                                       title: "拖动进度条", subtitle: "左右滑动快进 / 快退，下滑取消")
+                    }
+
+                    SubPageSectionLabel(text: "双击屏幕")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "hand.tap", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                                       title: "左侧", value: "快退 10 秒")
+                        subDivider
+                        SubPageInfoRow(icon: "hand.tap", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                                       title: "中间", value: "播放 / 暂停")
+                        subDivider
+                        SubPageInfoRow(icon: "hand.tap", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                                       title: "右侧", value: "快进 10 秒")
+                    }
+
+                    SubPageSectionLabel(text: "纵向滑动")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "sun.max", tint: Color(red: 0.95, green: 0.56, blue: 0.16),
+                                       title: "左半屏", subtitle: "上下滑动调节亮度")
+                        subDivider
+                        SubPageInfoRow(icon: "speaker.wave.2", tint: Color(red: 0.20, green: 0.62, blue: 0.62),
+                                       title: "右半屏", subtitle: "上下滑动调节音量")
+                    }
+
+                    SubPageSectionLabel(text: "长按")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "speedometer", tint: Color(red: 0.55, green: 0.35, blue: 0.85),
+                                       title: "滑动调速", subtitle: "按住后左右滑动临时调速，松开恢复原速")
+                    }
+
+                    SubPageSectionLabel(text: "其他")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "plus.magnifyingglass", tint: Color(red: 0.91, green: 0.57, blue: 0.18),
+                                       title: "双指缩放", subtitle: "在适应与填充之间切换画面比例")
+                        subDivider
+                        SubPageInfoRow(icon: "hand.draw", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                                       title: "单指拖动画面", subtitle: "在画面内移动缩放后的视频窗口")
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    private var subDivider: some View {
+        Divider().overlay(Color.dsLightBorder).padding(.leading, 56)
+    }
+}
+
+// MARK: - 关于子页
+
+/// 关于子页：应用信息 / 版本号 / 开源致谢 / 免责声明（静态文本）
+private struct AboutPage: View {
+    let onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "关于", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    // 应用图标 + 名称 + 版本（稿 setfoot 风格的居中头部）
+                    VStack(spacing: 10) {
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(LinearGradient(colors: [Color(red: 0.98, green: 0.72, blue: 0.24),
+                                                          Color(red: 0.95, green: 0.45, blue: 0.15)],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 88, height: 88)
+                            .overlay(Image(systemName: "play.fill")
+                                .font(.system(size: 34, weight: .bold))
+                                .foregroundStyle(.white))
+                            .shadow(color: Color.black.opacity(0.12), radius: 12, y: 6)
+                        Text("Luplay")
+                            .font(.system(size: 22, weight: .heavy))
+                            .foregroundStyle(.dsLightInk)
+                        Text("版本 \(versionText)")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(.dsLightInk2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+
+                    SubPageSectionLabel(text: "开源致谢")
+                    SubPageCard {
+                        Text(acknowledgement)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.dsLightInk2)
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+
+                    SubPageSectionLabel(text: "免责声明")
+                    SubPageCard {
+                        Text(disclaimer)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.dsLightInk2)
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    /// 版本号：CFBundleShortVersionString（CFBundleVersion）
+    private var versionText: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "\(short) (\(build))"
+    }
+
+    private var acknowledgement: String {
+        "播放内核基于开源项目 mpv（含 FFmpeg / libass）构建，界面与弹幕渲染基于 SwiftUI 自研。感谢 mpv、FFmpeg、libass 及所有开源社区贡献者。"
+    }
+
+    private var disclaimer: String {
+        "本应用是一款本地播放器工具，自身不提供、不存储、不传播任何影视内容；所有媒体与弹幕数据均来自用户自行配置的第三方服务。请遵守所在地区法律法规，仅用于获取合法授权的内容。使用第三方服务产生的数据与行为责任由用户自行承担。"
     }
 }
