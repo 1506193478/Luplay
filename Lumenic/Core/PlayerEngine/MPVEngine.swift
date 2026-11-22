@@ -3,8 +3,8 @@ import UIKit
 import GLKit
 import Darwin
 
-#if canImport(MPVKit)
-import MPVKit
+#if canImport(Libmpv)
+import Libmpv
 #endif
 
 /// mpv 内核（libmpv）：MKV/ASS/PGS/HEVC10bit 通吃，VideoToolbox 硬解。
@@ -17,7 +17,7 @@ final class MPVEngine: NSObject, PlayerEngine {
     }
 
     static var isAvailable: Bool {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         return true
         #else
         return false
@@ -26,7 +26,7 @@ final class MPVEngine: NSObject, PlayerEngine {
 
     // MARK: - 状态
 
-    #if canImport(MPVKit)
+    #if canImport(Libmpv)
     private var handle: OpaquePointer?
     private var renderContext: OpaquePointer?
     #endif
@@ -45,7 +45,7 @@ final class MPVEngine: NSObject, PlayerEngine {
 
     override init() {
         super.init()
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let h = mpv_create() else { return }
         handle = h
         mpv_set_option_string(h, "hwdec", "videotoolbox")
@@ -76,7 +76,7 @@ final class MPVEngine: NSObject, PlayerEngine {
     }
 
     deinit {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         eventLoopRunning = false
         if let renderContext { mpv_render_context_free(renderContext) }
         if let handle { mpv_terminate_destroy(handle) }
@@ -86,7 +86,7 @@ final class MPVEngine: NSObject, PlayerEngine {
     // MARK: - 加载
 
     func load(_ item: PlayableItem) async throws {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let handle else { throw PlayerError.engineUnavailable }
         if !item.headers.isEmpty {
             let joined = item.headers.map { "\($0.key): \($0.value)" }.joined(separator: "\n")
@@ -106,17 +106,17 @@ final class MPVEngine: NSObject, PlayerEngine {
     // MARK: - 控制
 
     func play() {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         setFlag("paused", false)
         #endif
     }
     func pause() {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         setFlag("paused", true)
         #endif
     }
     var isPlaying: Bool {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let handle else { return false }
         var flag: Int32 = 1
         mpv_get_property(handle, "paused", MPV_FORMAT_FLAG, &flag)
@@ -127,7 +127,7 @@ final class MPVEngine: NSObject, PlayerEngine {
     }
 
     func seek(to seconds: TimeInterval) {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let handle else { return }
         var args = cArgs(["seek", String(seconds), "absolute"])
         mpv_command(handle, args)
@@ -136,7 +136,7 @@ final class MPVEngine: NSObject, PlayerEngine {
     }
 
     func setRate(_ rate: Double) {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let handle else { return }
         var v = rate
         mpv_set_property(handle, "speed", MPV_FORMAT_DOUBLE, &v)
@@ -146,7 +146,7 @@ final class MPVEngine: NSObject, PlayerEngine {
     // MARK: - 轨道
 
     func availableTracks() -> [TrackInfo] {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let handle else { return [] }
         guard let cStr = mpv_get_property_string(handle, "track-list") else { return [] }
         let json = String(cString: cStr)
@@ -169,19 +169,19 @@ final class MPVEngine: NSObject, PlayerEngine {
     }
 
     func selectAudio(_ id: String) {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         setString("aid", String(id.dropFirst()))
         #endif
     }
     func selectSubtitle(_ id: String?) {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let id else { setString("sid", "no"); return }
         setString("sid", String(id.dropFirst()))
         #endif
     }
 
     func loadExternalSubtitle(_ url: URL) {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         guard let handle else { return }
         var args = cArgs(["sub-add", url.absoluteString, "auto", "外挂字幕"])
         mpv_command(handle, args)
@@ -191,7 +191,7 @@ final class MPVEngine: NSObject, PlayerEngine {
 
     /// 字幕全家桶（方案 §5.2-5）：sub-font-size / sub-delay / sub-pos / sub-border-size 等
     func setSubtitleOption(name: String, value: String) {
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         setString(name, value)
         #endif
     }
@@ -202,7 +202,7 @@ final class MPVEngine: NSObject, PlayerEngine {
         MPVRenderView(engine: self)
     }
 
-    #if canImport(MPVKit)
+    #if canImport(Libmpv)
     /// 渲染上下文挂在 view 的 EAGLContext 上（view 首次 layout 时调用）
     fileprivate func attachRenderContext(to view: MPVRenderView) -> Bool {
         guard renderContext == nil, let handle else { return false }
@@ -306,7 +306,7 @@ final class MPVRenderView: GLKView {
         backgroundColor = .black
 
         EAGLContext.setCurrent(glContext)
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         _ = engine.attachRenderContext(to: self)
         #endif
 
@@ -325,7 +325,7 @@ final class MPVRenderView: GLKView {
     override func draw(_ rect: CGRect) {
         guard let engine else { return }
         let scale = Int32(contentScaleFactor)
-        #if canImport(MPVKit)
+        #if canImport(Libmpv)
         engine.renderFrame(width: Int32(bounds.width) * scale, height: Int32(bounds.height) * scale)
         #endif
     }
