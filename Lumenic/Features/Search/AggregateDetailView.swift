@@ -130,7 +130,6 @@ struct AggregateDetailView: View {
             sourceSection
             actionRow
             overviewSection
-            episodesSection
             peopleSection
             stillsSection
             similarSection
