@@ -118,7 +118,7 @@ struct SearchView: View {
             }
         }
         // 防抖搜索：query/模式变化 → 停顿 350ms 后发起（task(id:) 自动取消旧任务）
-        .task(id: searchKey) { runSearchTask() }
+        .task(id: searchKey) { await runSearchTask() }
     }
 
     private var searchKey: String { "\(mode == .library ? "lib" : "tmdb")|\(query)" }
@@ -769,20 +769,29 @@ private struct RowPoster: View {
 }
 
 /// 顶部圆角形状（稿 sfilter 22 圆角白面板；iOS 16 兼容，避免 16.4+ 的 UnevenRoundedRectangle）
-private struct TopRoundedShape: Shape {
+/// 实现 InsettableShape 以支持 strokeBorder
+private struct TopRoundedShape: InsettableShape {
     var radius: CGFloat
+    var insetAmount: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
-        Path { p in
-            p.move(to: CGPoint(x: 0, y: rect.height))
-            p.addLine(to: CGPoint(x: 0, y: radius))
-            p.addQuadCurve(to: CGPoint(x: radius, y: 0),
-                           control: CGPoint(x: 0, y: 0))
-            p.addLine(to: CGPoint(x: rect.width - radius, y: 0))
-            p.addQuadCurve(to: CGPoint(x: rect.width, y: radius),
-                           control: CGPoint(x: rect.width, y: 0))
-            p.addLine(to: CGPoint(x: rect.width, y: rect.height))
+        let r = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        return Path { p in
+            p.move(to: CGPoint(x: r.minX, y: r.maxY))
+            p.addLine(to: CGPoint(x: r.minX, y: r.minY + radius))
+            p.addQuadCurve(to: CGPoint(x: r.minX + radius, y: r.minY),
+                           control: CGPoint(x: r.minX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX - radius, y: r.minY))
+            p.addQuadCurve(to: CGPoint(x: r.maxX, y: r.minY + radius),
+                           control: CGPoint(x: r.maxX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
             p.closeSubpath()
         }
+    }
+
+    func inset(by amount: CGFloat) -> some InsettableShape {
+        var s = self
+        s.insetAmount += amount
+        return s
     }
 }

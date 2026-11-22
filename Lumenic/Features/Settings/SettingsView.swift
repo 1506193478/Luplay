@@ -54,9 +54,11 @@ struct SettingsView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 14)
 
+                appSection
                 syncSection
                 providerSection
                 playbackSection
+                historySection
                 secretsSection
                 aboutSection
                 Color.clear.frame(height: 120)
@@ -68,8 +70,13 @@ struct SettingsView: View {
     @ViewBuilder
     private func subPageContent(_ page: SettingsSubPage) -> some View {
         switch page {
+        case .app:
+            AppSettingsPage(onBack: { closeSub() })
         case .playback:
-            PlaybackSettingsPage(onBack: { closeSub() })
+            // 弹幕设置 / 弹幕 API 入口并入播放子页底部（稿 spDanm / dmApi 同层）
+            PlaybackSettingsPage(onBack: { closeSub() },
+                                 onOpenDanmaku: { withAnimation(.dsEaseOut) { subPage = .danmaku } },
+                                 onOpenDanmakuAPI: { withAnimation(.dsEaseOut) { subPage = .danmakuAPI } })
         case .danmaku:
             DanmakuSettingsPage(onBack: { closeSub() },
                                 onOpenAPI: { withAnimation(.dsEaseOut) { subPage = .danmakuAPI } })
@@ -77,6 +84,13 @@ struct SettingsView: View {
             DanmakuAPIPage(onBack: { closeSub() })
         case .gestures:
             GestureHelpPage(onBack: { closeSub() })
+        case .ui:
+            InterfaceSettingsPage(onBack: { closeSub() },
+                                  onOpenButtons: { withAnimation(.dsEaseOut) { subPage = .playerButtons } })
+        case .playerButtons:
+            PlayerButtonsPage(onBack: { closeSub() })
+        case .history:
+            HistorySettingsPage(onBack: { closeSub() })
         case .about:
             AboutPage(onBack: { closeSub() })
         }
@@ -180,6 +194,46 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: 应用（稿 SETMODS[0]：应用 · 外观与触感）
+
+    private var appSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("应用")
+            lightCard {
+                Button { openSub(.app) } label: {
+                    lightRow(icon: "square.grid.2x2", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                             title: "应用", subtitle: "外观与触感") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: 观看记录（稿 SETMODS[5]：观看记录 · 由服务器记录）
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("观看记录")
+            lightCard {
+                Button { openSub(.history) } label: {
+                    lightRow(icon: "clock", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                             title: "观看记录", subtitle: "由服务器记录") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
     // MARK: 播放设置（默认内核真实可切换，EngineSelector 读取覆盖）
 
     private var playbackSection: some View {
@@ -199,17 +253,7 @@ struct SettingsView: View {
                 cardDivider
                 Button { openSub(.playback) } label: {
                     lightRow(icon: "4k.tv.hfill", tint: Color(red: 0.55, green: 0.35, blue: 0.85),
-                             title: "播放设置", subtitle: "引擎 · 硬解 · 续播 · 倍速记忆") {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.dsLightInk2.opacity(0.5))
-                    }
-                }
-                .buttonStyle(.plain)
-                cardDivider
-                Button { openSub(.danmaku) } label: {
-                    lightRow(icon: "text.bubble", tint: Color(red: 0.20, green: 0.62, blue: 0.62),
-                             title: "弹幕设置", subtitle: "显示 · 字号 · 不透明度 · 速度") {
+                             title: "播放", subtitle: "跳转、缓存与解码") {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12))
                             .foregroundStyle(.dsLightInk2.opacity(0.5))
@@ -219,7 +263,17 @@ struct SettingsView: View {
                 cardDivider
                 Button { openSub(.gestures) } label: {
                     lightRow(icon: "hand.draw", tint: Color(red: 0.91, green: 0.57, blue: 0.18),
-                             title: "手势与按钮", subtitle: "双击、滑动与长按说明") {
+                             title: "手势", subtitle: "双击、滑动与长按") {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.dsLightInk2.opacity(0.5))
+                    }
+                }
+                .buttonStyle(.plain)
+                cardDivider
+                Button { openSub(.ui) } label: {
+                    lightRow(icon: "rectangle.split.2x1", tint: Color(red: 0.20, green: 0.62, blue: 0.62),
+                             title: "界面", subtitle: "播放器显示") {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 12))
                             .foregroundStyle(.dsLightInk2.opacity(0.5))
@@ -445,7 +499,7 @@ struct SecretsEditView: View {
 
 /// 设置子页路由枚举
 private enum SettingsSubPage {
-    case playback, danmaku, danmakuAPI, gestures, about
+    case app, playback, danmaku, danmakuAPI, gestures, ui, playerButtons, history, about
 }
 
 /// 浅色二级页导航条（稿 lnav/lback：‹ 返回 + 居中标题）
@@ -603,9 +657,12 @@ private struct SubPageInfoRow: View {
 
 // MARK: - 播放设置子页（稿 v-setplay 精选项）
 
-/// 播放设置子页：内核 / 硬解 / 启动续播 / 倍速记忆，全部真实持久化
+/// 播放设置子页（稿 v-setplay）：引擎 / 硬解 / 启动续播 / 倍速记忆 + 弹幕入口，全部真实持久化
 private struct PlaybackSettingsPage: View {
     let onBack: () -> Void
+    // 弹幕设置 / 弹幕 API 已并入本页底部入口（主壳不再单列）
+    let onOpenDanmaku: () -> Void
+    let onOpenDanmakuAPI: () -> Void
 
     // 引擎覆盖：PlayerEngine.swift 已读取 "engine.override"，真实生效
     @AppStorage("engine.override") private var engine = "auto"
@@ -621,7 +678,7 @@ private struct PlaybackSettingsPage: View {
             SettingsNavBar(title: "播放设置", onBack: onBack)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    SubPageHeader(title: "播放", subtitle: "引擎、解码与续播")
+                    SubPageHeader(title: "播放", subtitle: "跳转、缓存与解码")
                     SubPageCard {
                         SubPageRow(icon: "cpu", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
                                    title: "播放引擎", subtitle: engineHint) {
@@ -654,6 +711,30 @@ private struct PlaybackSettingsPage: View {
                                 .labelsHidden()
                                 .tint(Color.dsAccent)
                         }
+                    }
+
+                    // 弹幕设置 / 弹幕 API 入口（稿 spDanm：并入播放子页底部）
+                    SubPageSectionLabel(text: "弹幕")
+                    SubPageCard {
+                        Button(action: onOpenDanmaku) {
+                            SubPageRow(icon: "text.bubble", tint: Color(red: 0.20, green: 0.62, blue: 0.62),
+                                       title: "弹幕设置", subtitle: "显示 · 字号 · 不透明度 · 速度") {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.dsLightInk2.opacity(0.5))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        subDivider
+                        Button(action: onOpenDanmakuAPI) {
+                            SubPageRow(icon: "globe", tint: Color(red: 0.85, green: 0.47, blue: 0.05),
+                                       title: "弹幕 API", subtitle: "弹弹play 密钥与接口") {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.dsLightInk2.opacity(0.5))
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
                     Color.clear.frame(height: 40)
                 }
@@ -974,5 +1055,308 @@ private struct AboutPage: View {
 
     private var disclaimer: String {
         "本应用是一款本地播放器工具，自身不提供、不存储、不传播任何影视内容；所有媒体与弹幕数据均来自用户自行配置的第三方服务。请遵守所在地区法律法规，仅用于获取合法授权的内容。使用第三方服务产生的数据与行为责任由用户自行承担。"
+    }
+}
+
+// MARK: - 应用子页（稿 v-setapp：外观与触感）
+
+/// 分段选项（稿 segb：图标 + 文字）
+private struct SegmentOption: Identifiable {
+    let value: String
+    let icon: String
+    let label: String
+    var id: String { value }
+}
+
+/// 子页分段选择器（稿 segc：圆角容器内多选一）
+private struct SubPageSegment: View {
+    let options: [SegmentOption]
+    @Binding var selection: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(options) { opt in
+                Button {
+                    selection = opt.value
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: opt.icon)
+                            .font(.system(size: 12, weight: .semibold))
+                        Text(opt.label)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 34)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(selection == opt.value ? Color.dsAccent.opacity(0.14) : Color.clear)
+                    )
+                    .foregroundStyle(selection == opt.value ? Color.dsAccent : Color.dsLightInk2)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.dsLightPage)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.dsLightBorder, lineWidth: 1))
+        )
+    }
+}
+
+/// 应用子页：外观模式 / 启动页 / 触感反馈，真实持久化（本版本仅存偏好，不接入主题引擎）
+private struct AppSettingsPage: View {
+    let onBack: () -> Void
+
+    // 外观模式：跟随系统 / 浅色 / 深色（TODO: 待主题引擎接入后读取此键）
+    @AppStorage("appearance.mode") private var appearanceMode = "system"
+    // 启动页：首页 / 媒体库（TODO: 待根页签接入后读取此键）
+    @AppStorage("launch.tab") private var launchTab = "home"
+    // 触感反馈总开关（TODO: 待触感管理器接入后读取此键）
+    @AppStorage("haptics.enabled") private var hapticsEnabled = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "应用", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "应用", subtitle: "外观与触感")
+
+                    SubPageSectionLabel(text: "应用")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "square.grid.2x2", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                                       title: "软件图标", subtitle: "暂未开放", value: "开发中")
+                    }
+
+                    SubPageSectionLabel(text: "外观")
+                    SubPageCard {
+                        SubPageSegment(options: Self.appearanceOptions, selection: $appearanceMode)
+                            .padding(12)
+                    }
+
+                    SubPageSectionLabel(text: "启动时打开")
+                    SubPageCard {
+                        SubPageSegment(options: Self.launchOptions, selection: $launchTab)
+                            .padding(12)
+                    }
+
+                    SubPageSectionLabel(text: "触感")
+                    SubPageCard {
+                        SubPageRow(icon: "waveform", tint: Color(red: 0.95, green: 0.56, blue: 0.16),
+                                   title: "触感反馈", subtitle: "操作与播放控制时提供震动反馈") {
+                            Toggle("", isOn: $hapticsEnabled)
+                                .labelsHidden()
+                                .tint(Color.dsAccent)
+                        }
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    /// 外观选项（稿 saLook：跟随系统 / 浅色 / 深色）
+    private static let appearanceOptions: [SegmentOption] = [
+        SegmentOption(value: "system", icon: "circle.lefthalf.filled", label: "跟随系统"),
+        SegmentOption(value: "light", icon: "sun.max", label: "浅色"),
+        SegmentOption(value: "dark", icon: "moon", label: "深色"),
+    ]
+
+    /// 启动页选项（首页 / 媒体库）
+    private static let launchOptions: [SegmentOption] = [
+        SegmentOption(value: "home", icon: "house", label: "首页"),
+        SegmentOption(value: "library", icon: "film.stack", label: "媒体库"),
+    ]
+}
+
+// MARK: - 界面子页（稿 v-ui：播放器显示）
+
+/// 界面子页：记住画面比例 + 播放器按钮入口
+private struct InterfaceSettingsPage: View {
+    let onBack: () -> Void
+    let onOpenButtons: () -> Void
+
+    // TODO: 待播放器接入（画面比例切换时写入/读取此键，跨视频沿用）
+    @AppStorage("player.rememberAspect") private var rememberAspect = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "界面", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "界面", subtitle: "播放器显示")
+
+                    SubPageSectionLabel(text: "播放器")
+                    SubPageCard {
+                        SubPageRow(icon: "arrow.up.left.and.arrow.down.right",
+                                   tint: Color(red: 0.55, green: 0.35, blue: 0.85),
+                                   title: "记住画面比例",
+                                   subtitle: "播放器里切换的「铺满屏幕 / 完整画面」沿用到之后的视频；关闭时只对当前视频生效") {
+                            Toggle("", isOn: $rememberAspect)
+                                .labelsHidden()
+                                .tint(Color.dsAccent)
+                        }
+                        subDivider
+                        Button(action: onOpenButtons) {
+                            SubPageRow(icon: "square.grid.2x2", tint: Color(red: 0.23, green: 0.51, blue: 0.96),
+                                       title: "播放器按钮", subtitle: "顶栏 · 轮盘 · 底栏 · 更多菜单") {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.dsLightInk2.opacity(0.5))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    private var subDivider: some View {
+        Divider().overlay(Color.dsLightBorder).padding(.leading, 56)
+    }
+}
+
+// MARK: - 播放器按钮子页（稿 v-btns：位置与顺序，本版本静态展示）
+
+/// 播放器按钮子页：按稿 BTN 结构静态分组展示（顶栏 / 轮盘 / 底栏 / 更多菜单）
+private struct PlayerButtonsPage: View {
+    let onBack: () -> Void
+
+    /// 按钮条目
+    private struct ButtonItem: Identifiable {
+        let icon: String
+        let name: String
+        let tint: Color
+        var id: String { name }
+    }
+
+    /// 按钮分区（稿 BTNZ 顺序：顶栏 / 轮盘 / 底栏 / 更多菜单）
+    private struct ButtonGroup: Identifiable {
+        let zone: String
+        let items: [ButtonItem]
+        var id: String { zone }
+    }
+
+    // TODO: 拖拽排序与跨区移动待接入播放器后开放，当前为静态展示
+    private static let groups: [ButtonGroup] = [
+        ButtonGroup(zone: "顶栏", items: [
+            ButtonItem(icon: "rectangle.on.rectangle", name: "画中画",
+                       tint: Color(red: 0.23, green: 0.51, blue: 0.96)),
+            ButtonItem(icon: "arrow.up.left.and.arrow.down.right", name: "画面比例",
+                       tint: Color(red: 0.95, green: 0.56, blue: 0.16)),
+        ]),
+        ButtonGroup(zone: "轮盘", items: [
+            ButtonItem(icon: "text.bubble", name: "字幕",
+                       tint: Color(red: 0.20, green: 0.62, blue: 0.62)),
+            ButtonItem(icon: "waveform", name: "音轨",
+                       tint: Color(red: 0.35, green: 0.62, blue: 0.32)),
+            ButtonItem(icon: "message", name: "弹幕",
+                       tint: Color(red: 0.55, green: 0.35, blue: 0.85)),
+            ButtonItem(icon: "shippingbox", name: "资源版本",
+                       tint: Color(red: 0.91, green: 0.57, blue: 0.18)),
+            ButtonItem(icon: "airplayvideo", name: "投屏",
+                       tint: Color(red: 0.23, green: 0.51, blue: 0.96)),
+        ]),
+        ButtonGroup(zone: "底栏", items: [
+            ButtonItem(icon: "arrow.clockwise", name: "旋转屏幕",
+                       tint: Color(red: 0.95, green: 0.56, blue: 0.16)),
+            ButtonItem(icon: "lock", name: "锁定手势",
+                       tint: Color(red: 0.20, green: 0.62, blue: 0.62)),
+        ]),
+        ButtonGroup(zone: "更多菜单", items: [
+            ButtonItem(icon: "forward.end", name: "片头片尾",
+                       tint: Color(red: 0.55, green: 0.35, blue: 0.85)),
+        ]),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "播放器按钮", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "播放器按钮", subtitle: "位置与顺序")
+                    zoneSections
+                    Text("TODO：拖拽排序与跨区移动待接入播放器后开放，当前为静态展示。")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.dsLightInk2)
+                        .padding(.horizontal, 8)
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
+    }
+
+    /// 按分区静态分组展示（行尾灰色值标注所属分区）
+    @ViewBuilder
+    private var zoneSections: some View {
+        ForEach(Self.groups) { group in
+            SubPageSectionLabel(text: group.zone)
+            SubPageCard {
+                ForEach(group.items) { item in
+                    if item.id != group.items.first?.id {
+                        Divider().overlay(Color.dsLightBorder).padding(.leading, 56)
+                    }
+                    SubPageInfoRow(icon: item.icon, tint: item.tint,
+                                   title: item.name, value: group.zone)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 观看记录子页（稿 SETMODS[5]：由服务器记录）
+
+/// 观看记录子页：说明文案 + 清除本地观看记录（AppDatabase 尚无清空 playback_progress 接口，按钮禁用待接入）
+private struct HistorySettingsPage: View {
+    let onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsNavBar(title: "观看记录", onBack: onBack)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    SubPageHeader(title: "观看记录", subtitle: "由服务器记录")
+
+                    SubPageSectionLabel(text: "观看记录")
+                    SubPageCard {
+                        SubPageInfoRow(icon: "clock", tint: Color(red: 0.35, green: 0.62, blue: 0.32),
+                                       title: "云端观看进度",
+                                       subtitle: "观看进度由服务器记录，同一账号的设备间自动同步")
+                    }
+
+                    SubPageSectionLabel(text: "本地数据")
+                    SubPageCard {
+                        // TODO: AppDatabase 尚未提供清空 playback_progress 的接口，接入后启用按钮
+                        Button { } label: {
+                            SubPageRow(icon: "trash", tint: Color(red: 0.85, green: 0.30, blue: 0.25),
+                                       title: "清除本地观看记录",
+                                       subtitle: "删除本机保存的播放进度，不影响服务器记录") {
+                                Text("暂不可用")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.dsLightInk2.opacity(0.5))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(true)
+                    }
+                    Color.clear.frame(height: 40)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+            }
+        }
+        .background(Color.dsLightPage.ignoresSafeArea())
     }
 }
