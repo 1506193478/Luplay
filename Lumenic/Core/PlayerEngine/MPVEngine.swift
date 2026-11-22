@@ -207,11 +207,12 @@ final class MPVEngine: NSObject, PlayerEngine {
     fileprivate func attachRenderContext(to view: MPVRenderView) -> Bool {
         guard renderContext == nil, let handle else { return false }
         EAGLContext.setCurrent(view.glContext)
-        var getProcAddress: mpv_opengl_get_proc_address = { _, name in
+        // mpv_opengl_get_proc_address 的 C 函数指针 typedef 未被 clang 模块导出，
+        // 改为内联闭包由 Swift 自动转换（RTLD_DEFAULT 在 Apple 平台即 -2）
+        var glInit = mpv_opengl_init_params(get_proc_address: { _, name in
             guard let name else { return nil }
-            return dlsym(UnsafeMutableRawPointer(bitPattern: -2), name) // RTLD_DEFAULT
-        }
-        var glInit = mpv_opengl_init_params(get_proc_address: getProcAddress, get_proc_address_ctx: nil)
+            return dlsym(UnsafeMutableRawPointer(bitPattern: -2), name)
+        }, get_proc_address_ctx: nil)
         var fbo = mpv_opengl_fbo(fbo: 0, w: Int32(view.bounds.width), h: Int32(view.bounds.height), internal_format: 0x8058)
         var flipY: Int8 = 1
         var params: [mpv_render_param] = [
@@ -279,11 +280,11 @@ final class MPVEngine: NSObject, PlayerEngine {
 
     // MARK: C 数组工具
 
-    private func cArgs(_ strings: [String]) -> [UnsafeMutablePointer<CChar>?] {
-        strings.map { UnsafeMutablePointer<CChar>(strdup($0)) } + [nil]
+    private func cArgs(_ strings: [String]) -> [UnsafePointer<CChar>?] {
+        strings.map { UnsafePointer(strdup($0)) } + [nil]
     }
-    private func freeArgs(_ args: [UnsafeMutablePointer<CChar>?]) {
-        for a in args where a != nil { free(a) }
+    private func freeArgs(_ args: [UnsafePointer<CChar>?]) {
+        for a in args where a != nil { free(UnsafeMutablePointer(mutating: a)) }
     }
     #endif
 }
