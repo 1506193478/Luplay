@@ -32,7 +32,14 @@ final class CloudSyncService: ObservableObject {
         }
     }
 
-    private let container = CKContainer.default()
+    /// iCloud 容器按需创建：未签名安装（侧载无 iCloud entitlement）时
+    /// CKContainer.default() 会直接抛 NSException 闪退，必须等用户开启同步后才触碰
+    private var container: CKContainer?
+    private func ensureContainer() -> CKContainer? {
+        guard enabled else { return nil }
+        if container == nil { container = CKContainer.default() }
+        return container
+    }
     private var database: AppDatabase?
     private var debounceTask: Task<Void, Never>?
     private var dataChangeObserver: NSObjectProtocol?   // 通知令牌，deinit 移除
@@ -69,9 +76,14 @@ final class CloudSyncService: ObservableObject {
         }
     }
 
-    private var privateDB: CKDatabase { container.privateCloudDatabase }
+    private var privateDB: CKDatabase? { container?.privateCloudDatabase }
 
     func refreshAccount() async {
+        guard let container = ensureContainer() else {
+            accountAvailable = false
+            statusText = "未开启"
+            return
+        }
         let status = (try? await container.accountStatus()) ?? .couldNotDetermine
         accountAvailable = status == .available
         guard enabled else { return }
@@ -159,6 +171,7 @@ final class CloudSyncService: ObservableObject {
         records += (try? db.allLibraryEntries())?.map(libraryRecord) ?? []
         records += (try? db.allSkipMarkers())?.map(skipMarkerRecord) ?? []
         guard !records.isEmpty else { return }
+        guard let privateDB else { return }
         _ = try await privateDB.modifyRecords(saving: records, deleting: [], savePolicy: .allKeys)
     }
 
@@ -216,6 +229,7 @@ final class CloudSyncService: ObservableObject {
                 case .failure(let e): cont.resume(throwing: e)
                 }
             }
+            guard let privateDB else { cont.resume(returning: []); return }
             privateDB.add(op)
         }
     }

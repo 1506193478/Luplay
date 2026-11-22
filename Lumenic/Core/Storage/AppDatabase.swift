@@ -47,9 +47,9 @@ final class AppDatabase {
     /// 预览/测试用内存库
     static var inMemory: AppDatabase { AppDatabase(makeWriter: { try! DatabaseQueue() }) }
 
-    private init(makeWriter: () throws -> any DatabaseWriter) {
-        dbWriter = try! makeWriter()
-        try! migrator.migrate(dbWriter)
+    private init(makeWriter: () throws -> any DatabaseWriter) throws {
+        dbWriter = try makeWriter()
+        try migrator.migrate(dbWriter)
     }
 
     private var migrator: DatabaseMigrator {
