@@ -10,11 +10,29 @@ enum ProviderError: Error {
 enum ProviderFactory {
     static func make(_ config: ProviderConfig) -> SourceProvider {
         switch config.kind {
-        case .emby: return EmbyProvider(config: config)
+        case .emby, .jellyfin: return EmbyProvider(config: config)
         case .alist: return AlistProvider(config: config)
         case .webdav: return WebDAVProvider(config: config)
         }
     }
+}
+
+// MARK: - 共享网络会话（放行自签名证书：家用 NAS https 自签常见，连接报错首位原因）
+
+final class LenientTrustDelegate: NSObject, URLSessionDelegate {
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let trust = challenge.protectionSpace.serverTrust {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+}
+
+enum NetSession {
+    static let shared = URLSession(configuration: .default, delegate: LenientTrustDelegate(), delegateQueue: nil)
 }
 
 // MARK: - 媒体信息推断（文件名 → 容器/分辨率/HDR/编码；探测不到时给保守值）
@@ -117,7 +135,7 @@ final class EmbyProvider: SourceProvider {
         req.httpBody = try JSONSerialization.data(withJSONObject:
             ["Username": config.username, "Pw": config.password])
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await NetSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw ProviderError.badResponse("无响应") }
         guard (200..<300).contains(http.statusCode) else {
             throw ProviderError.badResponse("登录失败 HTTP \(http.statusCode)")
@@ -141,7 +159,7 @@ final class EmbyProvider: SourceProvider {
         comps.queryItems = query.isEmpty ? nil : query
         var req = URLRequest(url: comps.url!)
         req.setValue(token ?? "", forHTTPHeaderField: "X-Emby-Token")
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await NetSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw ProviderError.badResponse("请求失败 HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
         }
@@ -263,13 +281,20 @@ final class EmbyProvider: SourceProvider {
         return arr.compactMap { it in
             guard let itemId = it["Id"] as? String, let name = it["Name"] as? String else { return nil }
             let type = (it["Type"] as? String) == "Series" ? SourceItem.ItemType.series : .movie
+            // 部分服务器要求图片接口带鉴权，统一附加 api_key
+            func imageURL(_ path: String) -> URL? {
+                guard let base = baseURL,
+                      var c = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false) else { return nil }
+                c.queryItems = [URLQueryItem(name: "api_key", value: token ?? "")]
+                return c.url
+            }
             var poster: URL?
             if (it["ImageTags"] as? [String: Any])?["Primary"] != nil {
-                poster = baseURL?.appendingPathComponent("Items/\(itemId)/Images/Primary")
+                poster = imageURL("Items/\(itemId)/Images/Primary")
             }
             var backdrop: URL?
             if let bt = it["BackdropImageTags"] as? [Any], !bt.isEmpty {
-                backdrop = baseURL?.appendingPathComponent("Items/\(itemId)/Images/Backdrop/0")
+                backdrop = imageURL("Items/\(itemId)/Images/Backdrop/0")
             }
             return SourceItem(id: itemId, providerId: id, title: name,
                               year: it["ProductionYear"] as? Int, type: type,
@@ -311,7 +336,7 @@ final class AlistProvider: SourceProvider {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token { req.setValue(token, forHTTPHeaderField: "Authorization") }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await NetSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw ProviderError.badResponse("HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
         }
@@ -475,7 +500,7 @@ final class WebDAVProvider: SourceProvider {
         req.httpBody = propfindBody.data(using: .utf8)
         for (k, v) in authHeaders { req.setValue(v, forHTTPHeaderField: k) }
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await NetSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, [200, 207].contains(http.statusCode) else {
             throw ProviderError.badResponse("HTTP \((resp as? HTTPURLResponse)?.statusCode ?? -1)")
         }

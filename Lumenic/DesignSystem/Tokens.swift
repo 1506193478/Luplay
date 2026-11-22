@@ -16,6 +16,13 @@ extension Color {
     static let dsPage = Color(red: 0.08, green: 0.06, blue: 0.04)
     /// 卡片底色 #241d15
     static let dsCard = Color(red: 0.141, green: 0.114, blue: 0.082)
+
+    // 浅色页（稿 lpage：v-prov/v-edit/v-set）
+    static let dsLightPage = Color(red: 0.957, green: 0.945, blue: 0.922)   // #f4f1eb
+    static let dsLightCard = Color.white
+    static let dsLightInk = Color(red: 0.13, green: 0.11, blue: 0.09)
+    static let dsLightInk2 = Color(red: 0.45, green: 0.42, blue: 0.38)
+    static let dsLightBorder = Color.black.opacity(0.08)
     /// 评分金
     static let dsGold = Color(red: 1.0, green: 0.84, blue: 0.04)
     /// 强调色（方案 §5.3：iOS 系统蓝 #0A84FF）
@@ -32,6 +39,11 @@ extension ShapeStyle where Self == Color {
     static var dsGlassBorder: Color { Color.dsGlassBorder }
     static var dsPage: Color { Color.dsPage }
     static var dsCard: Color { Color.dsCard }
+    static var dsLightPage: Color { Color.dsLightPage }
+    static var dsLightCard: Color { Color.dsLightCard }
+    static var dsLightInk: Color { Color.dsLightInk }
+    static var dsLightInk2: Color { Color.dsLightInk2 }
+    static var dsLightBorder: Color { Color.dsLightBorder }
     static var dsGold: Color { Color.dsGold }
     static var dsAccent: Color { Color.dsAccent }
 }

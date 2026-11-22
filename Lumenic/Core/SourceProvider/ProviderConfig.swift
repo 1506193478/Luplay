@@ -66,11 +66,12 @@ final class KeychainStore {
 // MARK: - 片源配置（M4：设置页录入，整表 JSON 存 Keychain）
 
 enum ProviderKind: String, Codable, CaseIterable {
-    case emby, alist, webdav
+    case emby, jellyfin, alist, webdav
 
     var title: String {
         switch self {
-        case .emby: return "Emby / Jellyfin"
+        case .emby: return "Emby"
+        case .jellyfin: return "Jellyfin"
         case .alist: return "Alist"
         case .webdav: return "WebDAV"
         }
@@ -78,9 +79,19 @@ enum ProviderKind: String, Codable, CaseIterable {
 
     var iconName: String {
         switch self {
-        case .emby: return "server.rack"
+        case .emby, .jellyfin: return "server.rack"
         case .alist: return "cloud.fill"
         case .webdav: return "externaldrive.connected.to.line.below"
+        }
+    }
+
+    /// 图标底色（设置页/添加提供商网格的彩色 chip）
+    var tintColor: String {
+        switch self {
+        case .emby: return "#52b043"
+        case .jellyfin: return "#7b58e7"
+        case .alist: return "#3b82f6"
+        case .webdav: return "#e8912d"
         }
     }
 }
