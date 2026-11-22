@@ -414,7 +414,7 @@ struct HomeView: View {
     }
 
     private func toastCapsule<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        HStack(content)
+        HStack(content: content)
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(Capsule().fill(.ultraThinMaterial))
             .padding(.horizontal, 24)
