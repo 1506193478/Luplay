@@ -138,7 +138,7 @@ final class EmbyProvider: SourceProvider {
                                                             resolvingAgainstBaseURL: false) else {
             throw ProviderError.badURL
         }
-        comps.queryItems = query
+        comps.queryItems = query.isEmpty ? nil : query
         var req = URLRequest(url: comps.url!)
         req.setValue(token ?? "", forHTTPHeaderField: "X-Emby-Token")
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -234,6 +234,47 @@ final class EmbyProvider: SourceProvider {
         return MediaProbe.makeStreamInfo(url: url, headers: ["X-Emby-Token": token!],
                                          container: container, codec: codec,
                                          resolution: resolution, hdr: hdr, bitrateMbps: bitrateMbps)
+    }
+
+    // MARK: 浏览（首页真实数据）
+
+    /// GET /Users/{id}/Views → 媒体库列表
+    func libraries() async throws -> [SourceLibrary] {
+        try await authenticate()
+        guard let userID else { return [] }
+        let obj = try await get("Users/\(userID)/Views", query: [])
+        guard let items = obj["Items"] as? [[String: Any]] else { return [] }
+        return items.compactMap { it in
+            guard let lid = it["Id"] as? String, let name = it["Name"] as? String else { return nil }
+            return SourceLibrary(id: "\(id)|\(lid)", name: name,
+                                 kind: (it["CollectionType"] as? String) ?? "mixed")
+        }
+    }
+
+    /// GET /Users/{id}/Items/Latest → 最新入库（数组响应），带 Primary/Backdrop 海报直链
+    func latest(limit: Int) async throws -> [SourceItem] {
+        try await authenticate()
+        guard let userID else { return [] }
+        let obj = try await get("Users/\(userID)/Items/Latest", query: [
+            .init(name: "Limit", value: "\(limit)"),
+            .init(name: "Fields", value: "ProductionYear"),
+        ])
+        guard let arr = obj as? [[String: Any]] else { return [] }
+        return arr.compactMap { it in
+            guard let itemId = it["Id"] as? String, let name = it["Name"] as? String else { return nil }
+            let type = (it["Type"] as? String) == "Series" ? SourceItem.ItemType.series : .movie
+            var poster: URL?
+            if (it["ImageTags"] as? [String: Any])?["Primary"] != nil {
+                poster = baseURL?.appendingPathComponent("Items/\(itemId)/Images/Primary")
+            }
+            var backdrop: URL?
+            if let bt = it["BackdropImageTags"] as? [Any], !bt.isEmpty {
+                backdrop = baseURL?.appendingPathComponent("Items/\(itemId)/Images/Backdrop/0")
+            }
+            return SourceItem(id: itemId, providerId: id, title: name,
+                              year: it["ProductionYear"] as? Int, type: type,
+                              posterURL: poster, backdropURL: backdrop)
+        }
     }
 }
 
@@ -344,6 +385,31 @@ final class AlistProvider: SourceProvider {
         return MediaProbe.makeStreamInfo(url: url, headers: [:], container: info.container,
                                          codec: info.codec, resolution: info.resolution,
                                          hdr: info.hdr, bitrateMbps: 0)
+    }
+
+    // MARK: 浏览（根目录库 + 浅层扫描）
+
+    func libraries() async throws -> [SourceLibrary] {
+        try await login()
+        return [SourceLibrary(id: "\(id)|root", name: "全部媒体", kind: "mixed")]
+    }
+
+    /// 根目录首屏：目录→剧集条目、视频文件→电影条目
+    func latest(limit: Int) async throws -> [SourceItem] {
+        try await login()
+        let data = try await request(path: "/api/fs/list",
+                                     body: ["path": "/", "page": 1, "per_page": limit, "refresh": false])
+        guard let content = data["content"] as? [[String: Any]] else { return [] }
+        return content.prefix(limit).compactMap { c in
+            let name = c["name"] as? String ?? ""
+            guard !name.isEmpty else { return nil }
+            let isDir = (c["is_dir"] as? Bool) ?? ((c["type"] as? Int) == 0)
+            if isDir {
+                return SourceItem(id: "/" + name, providerId: id, title: name, year: nil, type: .series)
+            }
+            guard MediaProbe.isVideoFile(name) else { return nil }
+            return SourceItem(id: "/" + name, providerId: id, title: name, year: nil, type: .movie)
+        }
     }
 }
 
@@ -469,6 +535,29 @@ final class WebDAVProvider: SourceProvider {
                                          codec: info.codec, resolution: info.resolution,
                                          hdr: info.hdr, bitrateMbps: 0)
     }
+
+    // MARK: 浏览（根目录库 + 浅层扫描）
+
+    func libraries() async throws -> [SourceLibrary] {
+        [SourceLibrary(id: "\(id)|root", name: "全部媒体", kind: "mixed")]
+    }
+
+    /// 根目录首屏：目录→剧集条目、视频文件→电影条目
+    func latest(limit: Int) async throws -> [SourceItem] {
+        let entries = try await propfind(rootPath)
+        var items: [SourceItem] = []
+        for e in entries {
+            let name = (e.path as NSString).lastPathComponent
+            if e.isDir {
+                guard !name.isEmpty else { continue }
+                items.append(SourceItem(id: e.path, providerId: id, title: name, year: nil, type: .series))
+            } else if MediaProbe.isVideoFile(name) {
+                items.append(SourceItem(id: e.path, providerId: id, title: name, year: nil, type: .movie))
+            }
+            if items.count >= limit { break }
+        }
+        return items
+    }
 }
 
 /// multistatus XML 解析（命名空间前缀不定，按 localName 匹配）
@@ -556,5 +645,18 @@ final class LocalProvider: SourceProvider {
         return MediaProbe.makeStreamInfo(url: url, headers: [:], container: info.container,
                                          codec: info.codec, resolution: info.resolution,
                                          hdr: info.hdr, bitrateMbps: 0)
+    }
+
+    // MARK: 浏览
+
+    func libraries() async throws -> [SourceLibrary] {
+        scan().isEmpty ? [] : [SourceLibrary(id: "\(id)|root", name: "本地文件", kind: "mixed")]
+    }
+
+    func latest(limit: Int) async throws -> [SourceItem] {
+        scan().prefix(limit).map { url in
+            SourceItem(id: url.path, providerId: id, title: url.lastPathComponent,
+                       year: nil, type: .movie)
+        }
     }
 }

@@ -14,6 +14,8 @@ extension Color {
     static let dsGlassBorder = Color.white.opacity(0.10)
     /// 页面底色
     static let dsPage = Color(red: 0.08, green: 0.06, blue: 0.04)
+    /// 卡片底色 #241d15
+    static let dsCard = Color(red: 0.141, green: 0.114, blue: 0.082)
     /// 评分金
     static let dsGold = Color(red: 1.0, green: 0.84, blue: 0.04)
     /// 强调色（方案 §5.3：iOS 系统蓝 #0A84FF）
@@ -29,6 +31,7 @@ extension ShapeStyle where Self == Color {
     static var dsGlassFill: Color { Color.dsGlassFill }
     static var dsGlassBorder: Color { Color.dsGlassBorder }
     static var dsPage: Color { Color.dsPage }
+    static var dsCard: Color { Color.dsCard }
     static var dsGold: Color { Color.dsGold }
     static var dsAccent: Color { Color.dsAccent }
 }

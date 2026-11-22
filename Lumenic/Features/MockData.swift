@@ -103,8 +103,7 @@ struct CoverPlaceholder: View {
 }
 
 /// 按标题哈希取封面渐变（无 TMDB 海报时的稳定占位色）
-enum CoverPalette {
-    static let palette: [[Color]] = [
+enum CoverPalette {    static let palette: [[Color]] = [
         [Color(red: 0.55, green: 0.38, blue: 0.12), .black],
         [Color(red: 0.16, green: 0.30, blue: 0.42), .black],
         [Color(red: 0.30, green: 0.10, blue: 0.34), .black],
@@ -137,5 +136,28 @@ extension PlayRequest {
     /// 继续观看用：演示片源 + 真实媒体 key（标题|集标签），播放器启动时自动从进度库续播
     static func demoResuming(title: String, episodeLabel: String) -> PlayRequest {
         PlayRequest(title: title, episodeLabel: episodeLabel, options: demo().options)
+    }
+}
+
+// MARK: - 远程封面（源海报/TMDB）：无 URL 或加载失败时落标题渐变占位
+
+struct RemoteArt: View {
+    let url: URL?
+    let title: String
+
+    var body: some View {
+        ZStack {
+            CoverPlaceholder(gradient: CoverPalette.forTitle(title))
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        Color.clear
+                    }
+                }
+            }
+        }
     }
 }

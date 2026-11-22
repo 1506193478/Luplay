@@ -9,6 +9,24 @@ struct SourceItem: Identifiable, Hashable {
     let year: Int?
     let type: ItemType
     enum ItemType { case movie, series }
+    var posterURL: URL? = nil     // 源自带竖版海报（Emby ImageTags）；nil 时由 TMDB 补全
+    var backdropURL: URL? = nil   // 源自带横版背景（hero 轮播用）
+}
+
+// MARK: - 浏览能力（首页"我的媒体/最新入库"真实数据；默认空实现）
+
+/// 媒体库（Emby Views / 文件型源根目录）
+struct SourceLibrary: Identifiable, Hashable {
+    let id: String        // "\(providerId)|\(libraryId)"
+    let name: String
+    var kind: String = "mixed"   // movies / tvshows / mixed
+}
+
+extension SourceProvider {
+    /// 媒体库列表（Emby=/Users/{id}/Views；文件型源=单个根目录库）
+    func libraries() async throws -> [SourceLibrary] { [] }
+    /// 最新入库条目（Emby=/Items/Latest；文件型源=根目录浅层扫描）
+    func latest(limit: Int) async throws -> [SourceItem] { [] }
 }
 
 struct Episode: Identifiable, Hashable {

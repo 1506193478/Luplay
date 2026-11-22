@@ -39,11 +39,18 @@ struct RootView: View {
     @ViewBuilder
     private var content: some View {
         switch tab {
-        case .home: HomeView(openPlayer: play(_:))
+        case .home:
+            HomeView(openPlayer: play(_:),
+                     openSearch: { switchTo(.search) },
+                     openSettings: { switchTo(.settings) })
         case .library: LibraryView()
         case .search: SearchView(openPlayer: play(_:))
         case .settings: SettingsView()
         }
+    }
+
+    private func switchTo(_ t: Tab) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { tab = t }
     }
 
     private func play(_ request: PlayRequest) {
